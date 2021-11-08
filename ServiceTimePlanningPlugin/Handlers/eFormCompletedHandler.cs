@@ -53,58 +53,69 @@ namespace ServiceTimePlanningPlugin.Handlers
 
         public async Task Handle(eFormCompleted message)
         {
-            await using MicrotingDbContext sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
+            var eformIdString = _dbContext.PluginConfigurationValues
+                .First(x => x.Name == "TimePlanningBaseSettings:EformId")
+                .Value;
+            var eformId = int.Parse(eformIdString);
 
-            Site site = await sdkDbContext.Sites.SingleAsync(x => x.Id == message.SiteId);
-            Language language = await sdkDbContext.Languages.SingleAsync(x => x.Id == site.LanguageId);
-            ReplyElement caseModel = await _sdkCore.CaseRead(message.MicrotingId, message.CheckUId, language);
-            var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { caseModel.Id }, language);
-
-            var dateValue = DateTime.Parse(fieldValues.First().Value);
-            var shift1Start = int.Parse(fieldValues[1].Value);
-            var shift1Pause = int.Parse(fieldValues[2].Value);
-            var shift1Stop = int.Parse(fieldValues[3].Value);
-            var shift2Start = int.Parse(fieldValues[4].Value);
-            var shift2Pause = int.Parse(fieldValues[5].Value);
-            var shift2Stop = int.Parse(fieldValues[6].Value);
-
-            var assignedSiteId = await _dbContext.AssignedSites
-                .Where(x => x.SiteId == message.SiteId
-                            && x.WorkflowState != Constants.WorkflowStates.Removed)
-                .Select(x => x.Id)
-                .FirstOrDefaultAsync();
-
-            var timePlanning = await _dbContext.PlanRegistrations
-                .Where(x => x.AssignedSiteId == assignedSiteId
-                            && x.Date == dateValue)
-                .FirstOrDefaultAsync();
-
-            if (timePlanning == null)
+            await using var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
+            var site = await sdkDbContext.Sites.SingleAsync(x => x.MicrotingUid == message.SiteId);
+            var cls = await sdkDbContext.Cases
+                .Where(x => x.SiteId == site.Id)
+                .Where(x => x.MicrotingUid == message.MicrotingId)
+                .OrderBy(x => x.DoneAt)
+                .LastOrDefaultAsync();
+            if (cls.CheckListId == eformId)
             {
-                PlanRegistration newPlan = new PlanRegistration
+                var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == site.LanguageId);
+                var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { cls.Id }, language);
+
+                var dateValue = DateTime.Parse(fieldValues.First().Value);
+                var shift1Start = string.IsNullOrEmpty(fieldValues[1].Value) ? 0 : int.Parse(fieldValues[1].Value);
+                var shift1Pause = string.IsNullOrEmpty(fieldValues[2].Value) ? 0 : int.Parse(fieldValues[2].Value);
+                var shift1Stop = string.IsNullOrEmpty(fieldValues[3].Value) ? 0 : int.Parse(fieldValues[3].Value);
+                var shift2Start = string.IsNullOrEmpty(fieldValues[4].Value) ? 0 : int.Parse(fieldValues[4].Value);
+                var shift2Pause = string.IsNullOrEmpty(fieldValues[5].Value) ? 0 : int.Parse(fieldValues[5].Value);
+                var shift2Stop = string.IsNullOrEmpty(fieldValues[6].Value) ? 0 : int.Parse(fieldValues[6].Value);
+
+                var assignedSiteId = await _dbContext.AssignedSites
+                    .Where(x => x.SiteId == message.SiteId
+                                && x.WorkflowState != Constants.WorkflowStates.Removed)
+                    .Select(x => x.Id)
+                    .FirstOrDefaultAsync();
+
+                var timePlanning = await _dbContext.PlanRegistrations
+                    .Where(x => x.AssignedSiteId == assignedSiteId
+                                && x.Date == dateValue)
+                    .FirstOrDefaultAsync();
+
+                if (timePlanning == null)
                 {
-                    AssignedSiteId = assignedSiteId,
-                    Date = dateValue,
-                    Pause1Id = shift1Pause,
-                    Pause2Id = shift2Pause,
-                    Start1Id = shift1Start,
-                    Start2Id = shift2Start,
-                    Stop1Id = shift1Stop,
-                    Stop2Id = shift2Stop,
-                };
+                    var newPlan = new PlanRegistration
+                    {
+                        AssignedSiteId = assignedSiteId,
+                        Date = dateValue,
+                        Pause1Id = shift1Pause,
+                        Pause2Id = shift2Pause,
+                        Start1Id = shift1Start,
+                        Start2Id = shift2Start,
+                        Stop1Id = shift1Stop,
+                        Stop2Id = shift2Stop,
+                    };
 
-                await newPlan.Create(_dbContext);
-            }
-            else
-            {
-                timePlanning.Pause1Id = shift1Pause;
-                timePlanning.Pause2Id = shift2Pause;
-                timePlanning.Start1Id = shift1Start;
-                timePlanning.Start2Id = shift2Start;
-                timePlanning.Stop1Id = shift1Stop;
-                timePlanning.Stop2Id = shift2Stop;
+                    await newPlan.Create(_dbContext);
+                }
+                else
+                {
+                    timePlanning.Pause1Id = shift1Pause;
+                    timePlanning.Pause2Id = shift2Pause;
+                    timePlanning.Start1Id = shift1Start;
+                    timePlanning.Start2Id = shift2Start;
+                    timePlanning.Stop1Id = shift1Stop;
+                    timePlanning.Stop2Id = shift2Stop;
 
-                await timePlanning.Update(_dbContext);
+                    await timePlanning.Update(_dbContext);
+                }
             }
         }
     }
