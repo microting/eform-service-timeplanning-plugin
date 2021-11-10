@@ -107,14 +107,19 @@ namespace ServiceTimePlanningPlugin.Handlers
                 }
                 else
                 {
-                    timePlanning.Pause1Id = shift1Pause;
-                    timePlanning.Pause2Id = shift2Pause;
-                    timePlanning.Start1Id = shift1Start;
-                    timePlanning.Start2Id = shift2Start;
-                    timePlanning.Stop1Id = shift1Stop;
-                    timePlanning.Stop2Id = shift2Stop;
+                    if (timePlanning.Pause1Id == 0 || timePlanning.Pause2Id == 0
+                                                   || timePlanning.Start1Id == 0 || timePlanning.Start2Id == 0
+                                                   || timePlanning.Stop1Id == 0 || timePlanning.Stop2Id == 0)
+                    {
+                        timePlanning.Pause1Id = timePlanning.Pause1Id == 0 ? shift1Pause : timePlanning.Pause1Id;
+                        timePlanning.Pause2Id = timePlanning.Pause2Id == 0 ? shift2Pause : timePlanning.Pause2Id;
+                        timePlanning.Start1Id = timePlanning.Start1Id == 0 ? shift1Start : timePlanning.Start1Id;
+                        timePlanning.Start2Id = timePlanning.Start2Id == 0 ? shift2Start : timePlanning.Start2Id;
+                        timePlanning.Stop1Id = timePlanning.Stop1Id == 0 ? shift1Stop : timePlanning.Stop1Id;
+                        timePlanning.Stop2Id = timePlanning.Stop2Id == 0 ? shift2Stop : timePlanning.Stop2Id;
 
-                    await timePlanning.Update(_dbContext);
+                        await timePlanning.Update(_dbContext);
+                    }
                 }
             }
         }
