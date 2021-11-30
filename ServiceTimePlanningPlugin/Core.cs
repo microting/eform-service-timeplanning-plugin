@@ -66,9 +66,9 @@ namespace ServiceTimePlanningPlugin
             if (trigger.MicrotingUId != null && trigger.CheckUId != null)
             {
                 int caseId = (int)trigger.MicrotingUId;
-                int checkListId = (int)trigger.CheckListId;
+                int checkListId = trigger.CheckListId;
                 int checkUId = (int)trigger.CheckUId;
-                int siteId = (int)trigger.SiteUId;
+                int siteId = trigger.SiteUId;
                 _bus.SendLocal(new eFormCompleted(caseId, checkListId, checkUId, siteId));
             }
         }
