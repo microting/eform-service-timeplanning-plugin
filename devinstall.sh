@@ -8,4 +8,4 @@ fi
 
 mkdir Documents/workspace/microting/eform-debian-service/Plugins
 
-cp -av Documents/workspace/microting/eform-service-items-planning-plugin/ServiceTimePlanningPlugin Documents/workspace/microting/eform-debian-service/Plugins/ServiceTimePlanningPlugin
+cp -av Documents/workspace/microting/eform-service-timeplanning-plugin/ServiceTimePlanningPlugin Documents/workspace/microting/eform-debian-service/Plugins/ServiceTimePlanningPlugin
