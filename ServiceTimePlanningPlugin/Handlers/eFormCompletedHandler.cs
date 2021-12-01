@@ -65,7 +65,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                 .Where(x => x.MicrotingUid == message.MicrotingId)
                 .OrderBy(x => x.DoneAt)
                 .LastOrDefaultAsync();
-            if (cls.CheckListId == eformId)
+            if (cls != null && cls.CheckListId == eformId)
             {
                 var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == site.LanguageId);
                 var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { cls.Id }, language);
