@@ -107,9 +107,10 @@ namespace ServiceTimePlanningPlugin.Handlers
                                     && x.Date == dateValue)
                         .FirstOrDefaultAsync();
 
+
                     if (timePlanning == null)
                     {
-                        var newPlan = new PlanRegistration
+                        timePlanning = new PlanRegistration
                         {
                             AssignedSiteId = assignedSiteId,
                             Date = dateValue,
@@ -118,10 +119,10 @@ namespace ServiceTimePlanningPlugin.Handlers
                             Start1Id = shift1Start,
                             Start2Id = shift2Start,
                             Stop1Id = shift1Stop,
-                            Stop2Id = shift2Stop,
+                            Stop2Id = shift2Stop
                         };
 
-                        await newPlan.Create(_dbContext);
+                        await timePlanning.Create(_dbContext);
                     }
                     else
                     {
@@ -139,6 +140,45 @@ namespace ServiceTimePlanningPlugin.Handlers
                             await timePlanning.Update(_dbContext);
                         }
                     }
+
+                    var minutesMultiplier = 5;
+                    double nettoMinutes = 0;
+
+                    nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
+                    nettoMinutes = nettoMinutes - (timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0);
+                    nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
+                    nettoMinutes = nettoMinutes - (timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0);
+
+                    nettoMinutes = nettoMinutes * minutesMultiplier;
+
+                    double hours = nettoMinutes / 60;
+                    timePlanning.NettoHours = hours;
+                    timePlanning.Flex = hours - timePlanning.PlanHours;
+                    var preTimePlanning =
+                        await _dbContext.PlanRegistrations.SingleOrDefaultAsync(x => x.Date == timePlanning.Date.AddDays(-1)
+                            && x.AssignedSiteId == assignedSiteId);
+                    if (preTimePlanning != null)
+                    {
+                        timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex;
+                    }
+                    else
+                    {
+                        timePlanning.SumFlex = timePlanning.Flex;
+                    }
+                    await timePlanning.Update(_dbContext);
+                    if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.AssignedSiteId == assignedSiteId))
+                    {
+                        double preSumFlex = timePlanning.SumFlex;
+                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.AssignedSiteId == assignedSiteId).ToListAsync();
+                        foreach (PlanRegistration planRegistration in list)
+                        {
+                            Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
+                            planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
+                            await planRegistration.Update(_dbContext);
+                            preSumFlex = planRegistration.SumFlex;
+                        }
+                    }
+
                 }
             }
             catch (Exception ex)
