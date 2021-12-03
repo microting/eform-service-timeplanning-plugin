@@ -163,7 +163,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             timePlanning.Start2Id = timePlanning.Start2Id == 0 ? shift2Start : timePlanning.Start2Id;
                             timePlanning.Stop1Id = timePlanning.Stop1Id == 0 ? shift1Stop : timePlanning.Stop1Id;
                             timePlanning.Stop2Id = timePlanning.Stop2Id == 0 ? shift2Stop : timePlanning.Stop2Id;
-                            timePlanning.WorkerComment = fieldValues[7].Value;
+                            timePlanning.WorkerComment += fieldValues[7].Value;
 
                             await timePlanning.Update(_dbContext);
                         }
@@ -200,7 +200,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     {
                         double preSumFlex = timePlanning.SumFlex;
                         var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
-                                && x.SdkSitId == site.Id)
+                                && x.SdkSitId == site.MicrotingUid)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
@@ -225,7 +225,7 @@ namespace ServiceTimePlanningPlugin.Handlers
         {
             if (planRegistration.StatusCaseId != 0)
             {
-                await core.CaseDelete(planRegistration.StatusCaseId);
+                    await core.CaseDelete(planRegistration.StatusCaseId);
             }
             await using var sdkDbContext = core.DbContextHelper.GetDbContext();
             var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == siteInfo.LanguageId);
@@ -247,22 +247,28 @@ namespace ServiceTimePlanningPlugin.Handlers
             element.Description = cDataValue;
             DataItem dataItem = element.DataItemList.First();
             dataItem.Color = Constants.FieldColors.Yellow;
-            dataItem.Label = $"<strong>Dato: {planRegistration.Date:dddd dd. MMM yyyy, ci}</strong>";
+            dataItem.Label = $"<strong>Date: {planRegistration.Date.ToString("dddd dd. MMM yyyy", ci)}</strong>";
             cDataValue = new CDataValue
             {
                 InderValue = $"PlanText: {planRegistration.PlanText}<br/>"+
-                             $"PlanHours: {planRegistration.PlanHours}<br/>" +
+                             $"PlanHours: {planRegistration.PlanHours}<br/><br/>" +
                              $"Shift 1 start: {options[planRegistration.Start1Id > 0 ? planRegistration.Start1Id - 1 : 0]}<br/>" +
                              $"Shift 1 pause: {options[planRegistration.Pause1Id > 0 ? planRegistration.Pause1Id - 1 : 0]}<br/>" +
-                             $"Shift 1 end: {options[planRegistration.Stop1Id > 0 ? planRegistration.Stop1Id - 1 : 0]}<br/>" +
+                             $"Shift 1 end: {options[planRegistration.Stop1Id > 0 ? planRegistration.Stop1Id - 1 : 0]}<br/><br/>" +
                              $"Shift 2 start: {options[planRegistration.Start2Id > 0 ? planRegistration.Start2Id - 1 : 0]}<br/>" +
                              $"Shift 2 pause: {options[planRegistration.Pause2Id > 0 ? planRegistration.Pause2Id - 1 : 0]}<br/>" +
-                             $"Shift 2 end: {options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/>" +
-                             $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/>" +
+                             $"Shift 2 end: {options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/><br/>" +
+                             $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/><br/>" +
                              $"Flex: {planRegistration.Flex:0.00)}<br/>" +
                              $"SumFlex: {planRegistration.SumFlex:0.00}<br/>" +
-                             $"PaidOutFlex: {planRegistration.PaiedOutFlex:0.00}<br/>" +
-                             $"Message: {planRegistration.Message}"
+                             $"PaidOutFlex: {planRegistration.PaiedOutFlex:0.00}<br/><br/>" +
+                             $"Message: {planRegistration.Message}<br/><br/>"+
+                             "<strong>Comments:</strong><br/>" +
+                             $"{planRegistration.WorkerComment}<br/><br/>" +
+                             "<strong>Comment office:</strong><br/>" +
+                             $"{planRegistration.CommentOffice}<br/><br/>" +
+                             "<strong>Comment office all:</strong><br/>" +
+                             $"{planRegistration.CommentOffice}<br/>"
             };
             dataItem.Description = cDataValue;
 
