@@ -23,6 +23,12 @@ SOFTWARE.
 */
 
 
+using System.Collections.Generic;
+using System.Globalization;
+using Microting.eForm.Dto;
+using Microting.eForm.Infrastructure.Data.Entities;
+using Microting.eForm.Infrastructure.Models;
+
 namespace ServiceTimePlanningPlugin.Handlers
 {
     using System;
@@ -40,11 +46,25 @@ namespace ServiceTimePlanningPlugin.Handlers
     {
         private readonly eFormCore.Core _sdkCore;
         private readonly TimePlanningPnDbContext _dbContext;
+        private readonly List<string> options = new List<string>();
 
         public EFormCompletedHandler(eFormCore.Core sdkCore, DbContextHelper dbContextHelper)
         {
             _dbContext = dbContextHelper.GetDbContext();
             _sdkCore = sdkCore;
+            int minute = 0;
+            int hour = 0;
+            for (int i = 0; i < 288; i++)
+            {
+                options.Add($"{hour:00}:{minute:00}");
+                minute += 5;
+                if (minute == 60)
+                {
+                    minute = 0;
+                    hour++;
+                }
+            }
+
         }
 
         public async Task Handle(eFormCompleted message)
@@ -59,7 +79,13 @@ namespace ServiceTimePlanningPlugin.Handlers
                 var eformIdString = _dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:EformId")
                     .Value;
+                var folderId  = int.Parse(_dbContext.PluginConfigurationValues
+                    .First(x => x.Name == "TimePlanningBaseSettings:FolderId")
+                    .Value);
                 var eformId = int.Parse(eformIdString);
+                var infoeFormId = int.Parse(_dbContext.PluginConfigurationValues
+                    .First(x => x.Name == "TimePlanningBaseSettings:InfoeFormId")
+                    .Value);
 
                 await using var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
                 var site = await sdkDbContext.Sites.SingleOrDefaultAsync(x => x.MicrotingUid == message.SiteId);
@@ -91,19 +117,19 @@ namespace ServiceTimePlanningPlugin.Handlers
                     var shift2Pause = string.IsNullOrEmpty(fieldValues[5].Value) ? 0 : int.Parse(fieldValues[5].Value);
                     var shift2Stop = string.IsNullOrEmpty(fieldValues[6].Value) ? 0 : int.Parse(fieldValues[6].Value);
 
-                    var assignedSiteId = await _dbContext.AssignedSites
-                        .Where(x => x.SiteId == message.SiteId
-                                    && x.WorkflowState != Constants.WorkflowStates.Removed)
-                        .Select(x => x.Id)
-                        .FirstOrDefaultAsync();
-                    if (assignedSiteId == 0)
-                    {
-                        Console.WriteLine($"AssignedSite with SiteId: {message.SiteId} not found");
-                        return;
-                    }
+                    // var assignedSiteId = await _dbContext.AssignedSites
+                    //     .Where(x => x.SiteId == message.SiteId
+                    //                 && x.WorkflowState != Constants.WorkflowStates.Removed)
+                    //     .Select(x => x.Id)
+                    //     .FirstOrDefaultAsync();
+                    // if (assignedSiteId == 0)
+                    // {
+                    //     Console.WriteLine($"AssignedSite with SiteId: {message.SiteId} not found");
+                    //     return;
+                    // }
 
                     var timePlanning = await _dbContext.PlanRegistrations
-                        .Where(x => x.AssignedSiteId == assignedSiteId
+                        .Where(x => x.SdkSitId == site.MicrotingUid
                                     && x.Date == dateValue)
                         .FirstOrDefaultAsync();
 
@@ -112,14 +138,15 @@ namespace ServiceTimePlanningPlugin.Handlers
                     {
                         timePlanning = new PlanRegistration
                         {
-                            AssignedSiteId = assignedSiteId,
+                            SdkSitId = (int)site.MicrotingUid,
                             Date = dateValue,
                             Pause1Id = shift1Pause,
                             Pause2Id = shift2Pause,
                             Start1Id = shift1Start,
                             Start2Id = shift2Start,
                             Stop1Id = shift1Stop,
-                            Stop2Id = shift2Stop
+                            Stop2Id = shift2Stop,
+                            WorkerComment = fieldValues[7].Value,
                         };
 
                         await timePlanning.Create(_dbContext);
@@ -136,6 +163,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             timePlanning.Start2Id = timePlanning.Start2Id == 0 ? shift2Start : timePlanning.Start2Id;
                             timePlanning.Stop1Id = timePlanning.Stop1Id == 0 ? shift1Stop : timePlanning.Stop1Id;
                             timePlanning.Stop2Id = timePlanning.Stop2Id == 0 ? shift2Stop : timePlanning.Stop2Id;
+                            timePlanning.WorkerComment = fieldValues[7].Value;
 
                             await timePlanning.Update(_dbContext);
                         }
@@ -156,7 +184,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     timePlanning.Flex = hours - timePlanning.PlanHours;
                     var preTimePlanning =
                         await _dbContext.PlanRegistrations.SingleOrDefaultAsync(x => x.Date == timePlanning.Date.AddDays(-1)
-                            && x.AssignedSiteId == assignedSiteId);
+                            && x.SdkSitId == site.MicrotingUid);
                     if (preTimePlanning != null)
                     {
                         timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex;
@@ -165,15 +193,20 @@ namespace ServiceTimePlanningPlugin.Handlers
                     {
                         timePlanning.SumFlex = timePlanning.Flex;
                     }
+
+                    timePlanning.StatusCaseId = await DeployResults(infoeFormId, _sdkCore, site, folderId, timePlanning);
                     await timePlanning.Update(_dbContext);
-                    if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.AssignedSiteId == assignedSiteId))
+                    if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
                     {
                         double preSumFlex = timePlanning.SumFlex;
-                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.AssignedSiteId == assignedSiteId).ToListAsync();
+                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
+                                && x.SdkSitId == site.Id)
+                            .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
+                            timePlanning.StatusCaseId = await DeployResults(infoeFormId, _sdkCore, site, folderId, planRegistration);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
@@ -187,5 +220,57 @@ namespace ServiceTimePlanningPlugin.Handlers
                 Console.WriteLine(ex.StackTrace);
             }
         }
+
+        private async Task<int> DeployResults(int eFormId, eFormCore.Core core, Site siteInfo, int folderId, PlanRegistration planRegistration)
+        {
+            if (planRegistration.StatusCaseId != 0)
+            {
+                await core.CaseDelete(planRegistration.StatusCaseId);
+            }
+            await using var sdkDbContext = core.DbContextHelper.GetDbContext();
+            var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == siteInfo.LanguageId);
+            var folder = await sdkDbContext.Folders.SingleOrDefaultAsync(x => x.Id == folderId);
+            var mainElement = await core.ReadeForm(eFormId, language);
+            CultureInfo ci = new CultureInfo(language.LanguageCode);
+            mainElement.Label = planRegistration.Date.ToString("dddd dd. MMM yyyy", ci);
+            mainElement.EndDate = DateTime.UtcNow.AddDays(30);
+            DateTime startDate = new DateTime(2020, 1, 1);
+            mainElement.DisplayOrder = (startDate - planRegistration.Date).Days;
+            DataElement element = (DataElement)mainElement.ElementList.First();
+            element.Label = mainElement.Label;
+            element.DoneButtonEnabled = false;
+            CDataValue cDataValue = new CDataValue
+            {
+                InderValue = $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/>" +
+                             $"{planRegistration.Message}"
+            };
+            element.Description = cDataValue;
+            DataItem dataItem = element.DataItemList.First();
+            dataItem.Color = Constants.FieldColors.Yellow;
+            dataItem.Label = $"<strong>Dato: {planRegistration.Date:dddd dd. MMM yyyy, ci}</strong>";
+            cDataValue = new CDataValue
+            {
+                InderValue = $"PlanText: {planRegistration.PlanText}<br/>"+
+                             $"PlanHours: {planRegistration.PlanHours}<br/>" +
+                             $"Shift 1 start: {options[planRegistration.Start1Id > 0 ? planRegistration.Start1Id - 1 : 0]}<br/>" +
+                             $"Shift 1 pause: {options[planRegistration.Pause1Id > 0 ? planRegistration.Pause1Id - 1 : 0]}<br/>" +
+                             $"Shift 1 end: {options[planRegistration.Stop1Id > 0 ? planRegistration.Stop1Id - 1 : 0]}<br/>" +
+                             $"Shift 2 start: {options[planRegistration.Start2Id > 0 ? planRegistration.Start2Id - 1 : 0]}<br/>" +
+                             $"Shift 2 pause: {options[planRegistration.Pause2Id > 0 ? planRegistration.Pause2Id - 1 : 0]}<br/>" +
+                             $"Shift 2 end: {options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/>" +
+                             $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/>" +
+                             $"Flex: {planRegistration.Flex:0.00)}<br/>" +
+                             $"SumFlex: {planRegistration.SumFlex:0.00}<br/>" +
+                             $"PaidOutFlex: {planRegistration.PaiedOutFlex:0.00}<br/>" +
+                             $"Message: {planRegistration.Message}"
+            };
+            dataItem.Description = cDataValue;
+
+            if (folder != null) mainElement.CheckListFolderName = folder.MicrotingUid.ToString();
+
+            return (int)await core.CaseCreate(mainElement, "", (int)siteInfo.MicrotingUid, folderId);
+        }
+
+
     }
 }
