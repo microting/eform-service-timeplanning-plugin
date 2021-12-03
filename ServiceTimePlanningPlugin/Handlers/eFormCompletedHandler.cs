@@ -46,25 +46,12 @@ namespace ServiceTimePlanningPlugin.Handlers
     {
         private readonly eFormCore.Core _sdkCore;
         private readonly TimePlanningPnDbContext _dbContext;
-        private readonly List<string> options = new List<string>();
+
 
         public EFormCompletedHandler(eFormCore.Core sdkCore, DbContextHelper dbContextHelper)
         {
             _dbContext = dbContextHelper.GetDbContext();
             _sdkCore = sdkCore;
-            int minute = 0;
-            int hour = 0;
-            for (int i = 0; i < 288; i++)
-            {
-                options.Add($"{hour:00}:{minute:00}");
-                minute += 5;
-                if (minute == 60)
-                {
-                    minute = 0;
-                    hour++;
-                }
-            }
-
         }
 
         public async Task Handle(eFormCompleted message)
@@ -189,7 +176,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         timePlanning.SumFlex = timePlanning.Flex;
                     }
 
-                    timePlanning.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, timePlanning);
+                    timePlanning.StatusCaseId = await timePlanning.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId);
                     await timePlanning.Update(_dbContext);
                     if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
                     {
@@ -201,7 +188,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
-                            planRegistration.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, planRegistration);
+                            planRegistration.StatusCaseId = await planRegistration.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
@@ -216,61 +203,7 @@ namespace ServiceTimePlanningPlugin.Handlers
             }
         }
 
-        private async Task<int> DeployResults(int maxHistoryDays, int eFormId, eFormCore.Core core, Site siteInfo, int folderId, PlanRegistration planRegistration)
-        {
-            if (planRegistration.StatusCaseId != 0)
-            {
-                    await core.CaseDelete(planRegistration.StatusCaseId);
-            }
-            await using var sdkDbContext = core.DbContextHelper.GetDbContext();
-            var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == siteInfo.LanguageId);
-            var folder = await sdkDbContext.Folders.SingleOrDefaultAsync(x => x.Id == folderId);
-            var mainElement = await core.ReadeForm(eFormId, language);
-            CultureInfo ci = new CultureInfo(language.LanguageCode);
-            mainElement.Label = planRegistration.Date.ToString("dddd dd. MMM yyyy", ci);
-            mainElement.EndDate = DateTime.UtcNow.AddDays(maxHistoryDays);
-            DateTime startDate = new DateTime(2020, 1, 1);
-            mainElement.DisplayOrder = (startDate - planRegistration.Date).Days;
-            DataElement element = (DataElement)mainElement.ElementList.First();
-            element.Label = mainElement.Label;
-            element.DoneButtonEnabled = false;
-            CDataValue cDataValue = new CDataValue
-            {
-                InderValue = $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/>" +
-                             $"{planRegistration.Message}"
-            };
-            element.Description = cDataValue;
-            DataItem dataItem = element.DataItemList.First();
-            dataItem.Color = Constants.FieldColors.Yellow;
-            dataItem.Label = $"<strong>Date: {planRegistration.Date.ToString("dddd dd. MMM yyyy", ci)}</strong>";
-            cDataValue = new CDataValue
-            {
-                InderValue = $"PlanText: {planRegistration.PlanText}<br/>"+
-                             $"PlanHours: {planRegistration.PlanHours}<br/><br/>" +
-                             $"Shift 1 start: {options[planRegistration.Start1Id > 0 ? planRegistration.Start1Id - 1 : 0]}<br/>" +
-                             $"Shift 1 pause: {options[planRegistration.Pause1Id > 0 ? planRegistration.Pause1Id - 1 : 0]}<br/>" +
-                             $"Shift 1 end: {options[planRegistration.Stop1Id > 0 ? planRegistration.Stop1Id - 1 : 0]}<br/><br/>" +
-                             $"Shift 2 start: {options[planRegistration.Start2Id > 0 ? planRegistration.Start2Id - 1 : 0]}<br/>" +
-                             $"Shift 2 pause: {options[planRegistration.Pause2Id > 0 ? planRegistration.Pause2Id - 1 : 0]}<br/>" +
-                             $"Shift 2 end: {options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/><br/>" +
-                             $"<strong>NettoHours: {planRegistration.NettoHours:0.00}</strong><br/><br/>" +
-                             $"Flex: {planRegistration.Flex:0.00)}<br/>" +
-                             $"SumFlex: {planRegistration.SumFlex:0.00}<br/>" +
-                             $"PaidOutFlex: {planRegistration.PaiedOutFlex:0.00}<br/><br/>" +
-                             $"Message: {planRegistration.Message}<br/><br/>"+
-                             "<strong>Comments:</strong><br/>" +
-                             $"{planRegistration.WorkerComment}<br/><br/>" +
-                             "<strong>Comment office:</strong><br/>" +
-                             $"{planRegistration.CommentOffice}<br/><br/>" +
-                             "<strong>Comment office all:</strong><br/>" +
-                             $"{planRegistration.CommentOffice}<br/>"
-            };
-            dataItem.Description = cDataValue;
 
-            if (folder != null) mainElement.CheckListFolderName = folder.MicrotingUid.ToString();
-
-            return (int)await core.CaseCreate(mainElement, "", (int)siteInfo.MicrotingUid, folderId);
-        }
 
 
     }

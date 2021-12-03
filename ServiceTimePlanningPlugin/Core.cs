@@ -159,12 +159,10 @@ namespace ServiceTimePlanningPlugin
 
                     _coreAvailable = false;
 
-                    var tries = 0;
                     while (_coreThreadRunning)
                     {
                         Thread.Sleep(100);
                         _bus.Dispose();
-                        tries++;
                     }
                     _sdkCore.Close();
 
