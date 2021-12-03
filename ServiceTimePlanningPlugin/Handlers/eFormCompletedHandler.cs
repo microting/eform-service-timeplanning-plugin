@@ -154,6 +154,10 @@ namespace ServiceTimePlanningPlugin.Handlers
                             timePlanning.Start2Id = timePlanning.Start2Id == 0 ? shift2Start : timePlanning.Start2Id;
                             timePlanning.Stop1Id = timePlanning.Stop1Id == 0 ? shift1Stop : timePlanning.Stop1Id;
                             timePlanning.Stop2Id = timePlanning.Stop2Id == 0 ? shift2Stop : timePlanning.Stop2Id;
+                            if (!string.IsNullOrEmpty(timePlanning.WorkerComment))
+                            {
+                                timePlanning.WorkerComment += "<br/>";
+                            }
                             timePlanning.WorkerComment += fieldValues[7].Value;
 
                             await timePlanning.Update(_dbContext);
@@ -197,7 +201,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
-                            timePlanning.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, planRegistration);
+                            planRegistration.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, planRegistration);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
