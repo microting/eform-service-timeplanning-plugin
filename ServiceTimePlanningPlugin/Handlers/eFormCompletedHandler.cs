@@ -86,6 +86,8 @@ namespace ServiceTimePlanningPlugin.Handlers
                 var infoeFormId = int.Parse(_dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:InfoeFormId")
                     .Value);
+                var maxHistoryDays = int.Parse(_dbContext.PluginConfigurationValues
+                    .First(x => x.Name == "TimePlanningBaseSettings:MaxHistoryDays").Value);
 
                 await using var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
                 var site = await sdkDbContext.Sites.SingleOrDefaultAsync(x => x.MicrotingUid == message.SiteId);
@@ -116,17 +118,6 @@ namespace ServiceTimePlanningPlugin.Handlers
                     var shift2Start = string.IsNullOrEmpty(fieldValues[4].Value) ? 0 : int.Parse(fieldValues[4].Value);
                     var shift2Pause = string.IsNullOrEmpty(fieldValues[5].Value) ? 0 : int.Parse(fieldValues[5].Value);
                     var shift2Stop = string.IsNullOrEmpty(fieldValues[6].Value) ? 0 : int.Parse(fieldValues[6].Value);
-
-                    // var assignedSiteId = await _dbContext.AssignedSites
-                    //     .Where(x => x.SiteId == message.SiteId
-                    //                 && x.WorkflowState != Constants.WorkflowStates.Removed)
-                    //     .Select(x => x.Id)
-                    //     .FirstOrDefaultAsync();
-                    // if (assignedSiteId == 0)
-                    // {
-                    //     Console.WriteLine($"AssignedSite with SiteId: {message.SiteId} not found");
-                    //     return;
-                    // }
 
                     var timePlanning = await _dbContext.PlanRegistrations
                         .Where(x => x.SdkSitId == site.MicrotingUid
@@ -194,7 +185,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         timePlanning.SumFlex = timePlanning.Flex;
                     }
 
-                    timePlanning.StatusCaseId = await DeployResults(infoeFormId, _sdkCore, site, folderId, timePlanning);
+                    timePlanning.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, timePlanning);
                     await timePlanning.Update(_dbContext);
                     if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
                     {
@@ -206,7 +197,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
-                            timePlanning.StatusCaseId = await DeployResults(infoeFormId, _sdkCore, site, folderId, planRegistration);
+                            timePlanning.StatusCaseId = await DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, planRegistration);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
@@ -221,7 +212,7 @@ namespace ServiceTimePlanningPlugin.Handlers
             }
         }
 
-        private async Task<int> DeployResults(int eFormId, eFormCore.Core core, Site siteInfo, int folderId, PlanRegistration planRegistration)
+        private async Task<int> DeployResults(int maxHistoryDays, int eFormId, eFormCore.Core core, Site siteInfo, int folderId, PlanRegistration planRegistration)
         {
             if (planRegistration.StatusCaseId != 0)
             {
@@ -233,7 +224,7 @@ namespace ServiceTimePlanningPlugin.Handlers
             var mainElement = await core.ReadeForm(eFormId, language);
             CultureInfo ci = new CultureInfo(language.LanguageCode);
             mainElement.Label = planRegistration.Date.ToString("dddd dd. MMM yyyy", ci);
-            mainElement.EndDate = DateTime.UtcNow.AddDays(30);
+            mainElement.EndDate = DateTime.UtcNow.AddDays(maxHistoryDays);
             DateTime startDate = new DateTime(2020, 1, 1);
             mainElement.DisplayOrder = (startDate - planRegistration.Date).Days;
             DataElement element = (DataElement)mainElement.ElementList.First();
