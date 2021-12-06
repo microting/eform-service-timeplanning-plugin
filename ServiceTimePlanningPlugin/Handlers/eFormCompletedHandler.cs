@@ -178,7 +178,8 @@ namespace ServiceTimePlanningPlugin.Handlers
 
                     Message _message =
                         await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
-                    timePlanning.StatusCaseId = await timePlanning.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, _message);
+                    string messageText = _message != null ? _message.Name : "";
+                    timePlanning.StatusCaseId = await timePlanning.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                     await timePlanning.Update(_dbContext);
                     if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
                     {
@@ -192,7 +193,8 @@ namespace ServiceTimePlanningPlugin.Handlers
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
                             _message =
                                 await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
-                            planRegistration.StatusCaseId = await planRegistration.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, _message);
+                            messageText = _message != null ? _message.Name : "";
+                            planRegistration.StatusCaseId = await planRegistration.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
