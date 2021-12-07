@@ -23,12 +23,6 @@ SOFTWARE.
 */
 
 
-using System.Collections.Generic;
-using System.Globalization;
-using Microting.eForm.Dto;
-using Microting.eForm.Infrastructure.Data.Entities;
-using Microting.eForm.Infrastructure.Models;
-
 namespace ServiceTimePlanningPlugin.Handlers
 {
     using System;
@@ -37,7 +31,6 @@ namespace ServiceTimePlanningPlugin.Handlers
     using Infrastructure.Helpers;
     using Messages;
     using Microsoft.EntityFrameworkCore;
-    using Microting.eForm.Infrastructure.Constants;
     using Microting.TimePlanningBase.Infrastructure.Data;
     using Microting.TimePlanningBase.Infrastructure.Data.Entities;
     using Rebus.Handlers;
@@ -165,8 +158,8 @@ namespace ServiceTimePlanningPlugin.Handlers
                     timePlanning.NettoHours = hours;
                     timePlanning.Flex = hours - timePlanning.PlanHours;
                     var preTimePlanning =
-                        await _dbContext.PlanRegistrations.SingleOrDefaultAsync(x => x.Date == timePlanning.Date.AddDays(-1)
-                            && x.SdkSitId == site.MicrotingUid);
+                        await _dbContext.PlanRegistrations.Where(x => x.Date < timePlanning.Date
+                            && x.SdkSitId == site.MicrotingUid).OrderByDescending(x => x.Date).FirstOrDefaultAsync();
                     if (preTimePlanning != null)
                     {
                         timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex;
@@ -176,9 +169,9 @@ namespace ServiceTimePlanningPlugin.Handlers
                         timePlanning.SumFlex = timePlanning.Flex;
                     }
 
-                    Message _message =
+                    Message theMessage =
                         await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
-                    string messageText = _message != null ? _message.Name : "";
+                    string messageText = theMessage != null ? theMessage.Name : "";
                     timePlanning.StatusCaseId = await timePlanning.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                     await timePlanning.Update(_dbContext);
                     if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
@@ -191,9 +184,9 @@ namespace ServiceTimePlanningPlugin.Handlers
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
-                            _message =
+                            theMessage =
                                 await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
-                            messageText = _message != null ? _message.Name : "";
+                            messageText = theMessage != null ? theMessage.Name : "";
                             planRegistration.StatusCaseId = await planRegistration.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
