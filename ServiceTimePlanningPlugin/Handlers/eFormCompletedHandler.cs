@@ -92,6 +92,16 @@ namespace ServiceTimePlanningPlugin.Handlers
                     var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { cls.Id }, language);
 
                     var dateValue = DateTime.Parse(fieldValues.First().Value);
+                    if (dateValue < DateTime.UtcNow.AddDays(-maxHistoryDays))
+                    {
+                        Console.WriteLine("The registration is older than maxHistoryDays");
+                        return;
+                    }
+                    if (dateValue > DateTime.UtcNow)
+                    {
+                        Console.WriteLine("The registration is in the future");
+                        return;
+                    }
                     var shift1Start = string.IsNullOrEmpty(fieldValues[1].Value) ? 0 : int.Parse(fieldValues[1].Value);
                     var shift1Pause = string.IsNullOrEmpty(fieldValues[2].Value) ? 0 : int.Parse(fieldValues[2].Value);
                     var shift1Stop = string.IsNullOrEmpty(fieldValues[3].Value) ? 0 : int.Parse(fieldValues[3].Value);
