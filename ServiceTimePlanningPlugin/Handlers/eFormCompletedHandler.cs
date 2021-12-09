@@ -196,7 +196,18 @@ namespace ServiceTimePlanningPlugin.Handlers
                             planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
                             theMessage =
                                 await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
-                            messageText = theMessage != null ? theMessage.Name : "";
+                            switch (language.LanguageCode)
+                            {
+                                case "da":
+                                    messageText = theMessage != null ? theMessage.DaName : "";
+                                    break;
+                                case "de":
+                                    messageText = theMessage != null ? theMessage.DeName : "";
+                                    break;
+                                default:
+                                    messageText = theMessage != null ? theMessage.EnName : "";
+                                    break;
+                            }
                             planRegistration.StatusCaseId = await planRegistration.DeployResults(maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
