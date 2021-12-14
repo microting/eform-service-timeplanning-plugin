@@ -189,14 +189,27 @@ namespace ServiceTimePlanningPlugin.Handlers
 
                     Message theMessage =
                         await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
-                    string messageText = theMessage != null ? theMessage.Name : "";
+                    string messageText;
+                    switch (language.LanguageCode)
+                    {
+                        case "da":
+                            messageText = theMessage != null ? theMessage.DaName : "";
+                            break;
+                        case "de":
+                            messageText = theMessage != null ? theMessage.DeName : "";
+                            break;
+                        default:
+                            messageText = theMessage != null ? theMessage.EnName : "";
+                            break;
+                    }
                     timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                     await timePlanning.Update(_dbContext);
-                    if (_dbContext.PlanRegistrations.Any(x => x.Date >timePlanning.Date && x.SdkSitId == site.MicrotingUid))
+                    if (_dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
+                        && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0))
                     {
                         double preSumFlex = timePlanning.SumFlex;
-                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
-                                && x.SdkSitId == site.MicrotingUid)
+                        var list = await _dbContext.PlanRegistrations.Where(x => timePlanning.Date >= DateTime.Now.AddDays(-maxHistoryDays) && x.Date <= DateTime.UtcNow
+                                && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
@@ -273,9 +286,10 @@ namespace ServiceTimePlanningPlugin.Handlers
                              $"{Translations.Flex}: {planRegistration.Flex:0.00}<br/>" +
                              $"{Translations.SumFlex}: {planRegistration.SumFlex:0.00}<br/>" +
                              $"{Translations.PaidOutFlex}: {planRegistration.PaiedOutFlex:0.00}<br/><br/>" +
-                             $"{Translations.Message}: {messageText}<br/><br/>"+
+                             $"<strong>{Translations.Message}:</strong><br/>" +
+                             $"{messageText}<br/><br/>" +
                              $"<strong>{Translations.Comments}:</strong><br/>" +
-                             $"{planRegistration.WorkerComment}<br/><br/>" +
+                             $"{planRegistration.WorkerComment.Replace("\r", "<br/>")}<br/><br/>" +
                              $"<strong>{Translations.Comment_office}:</strong><br/>" +
                              $"{planRegistration.CommentOffice}<br/><br/>"// +
                              // $"<strong>{Translations.Comment_office_all}:</strong><br/>" +
