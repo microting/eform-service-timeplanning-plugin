@@ -205,11 +205,11 @@ namespace ServiceTimePlanningPlugin.Handlers
                     timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                     await timePlanning.Update(_dbContext);
                     if (_dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
-                        && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0))
+                        && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
                     {
                         double preSumFlex = timePlanning.SumFlex;
                         var list = await _dbContext.PlanRegistrations.Where(x => timePlanning.Date >= DateTime.Now.AddDays(-maxHistoryDays) && x.Date <= DateTime.UtcNow
-                                && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0)
+                                && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
