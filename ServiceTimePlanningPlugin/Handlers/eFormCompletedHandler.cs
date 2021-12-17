@@ -64,13 +64,17 @@ namespace ServiceTimePlanningPlugin.Handlers
             Console.WriteLine($"message.CheckUId: {message.CheckUId}");
             try
             {
-                var eformIdString = _dbContext.PluginConfigurationValues
-                    .First(x => x.Name == "TimePlanningBaseSettings:EformId")
-                    .Value;
+                var eformIdString = await _dbContext.PluginConfigurationValues
+                    .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:EformId");
+
+                if (eformIdString == null)
+                {
+                    return;
+                }
                 var folderId  = int.Parse(_dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:FolderId")
                     .Value);
-                var eformId = int.Parse(eformIdString);
+                var eformId = int.Parse(eformIdString.Value);
                 var infoeFormId = int.Parse(_dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:InfoeFormId")
                     .Value);
