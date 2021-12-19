@@ -1,5 +1,15 @@
 # Changelog
 
+## [v1.0.10](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.10) (2021-12-19)
+
+[Full Changelog](https://github.com/microting/eform-service-timeplanning-plugin/compare/v1.0.9...v1.0.10)
+
+**Implemented enhancements:**
+
+- Bump Microting.TimePlanningBase from 2.0.22 to 2.0.23 [\#44](https://github.com/microting/eform-service-timeplanning-plugin/issues/44)
+- Bump Microting.eFormApi.BasePn from 3.1.11 to 3.1.12 [\#43](https://github.com/microting/eform-service-timeplanning-plugin/issues/43)
+- Bump Microting.eForm from 5.3.16 to 5.3.17 [\#42](https://github.com/microting/eform-service-timeplanning-plugin/issues/42)
+
 ## [v1.0.9](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.9) (2021-12-17)
 
 [Full Changelog](https://github.com/microting/eform-service-timeplanning-plugin/compare/v1.0.8...v1.0.9)
@@ -7,6 +17,7 @@
 **Implemented enhancements:**
 
 - Bump Microting.TimePlanningBase from 2.0.21 to 2.0.22 [\#41](https://github.com/microting/eform-service-timeplanning-plugin/issues/41)
+- Bump Microting.eFormApi.BasePn from 3.1.10 to 3.1.11 [\#40](https://github.com/microting/eform-service-timeplanning-plugin/issues/40)
 - Bump Microting.eForm from 5.3.15 to 5.3.16 [\#39](https://github.com/microting/eform-service-timeplanning-plugin/issues/39)
 
 ## [v1.0.8](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.8) (2021-12-16)
@@ -15,7 +26,6 @@
 
 **Implemented enhancements:**
 
-- Bump Microting.eFormApi.BasePn from 3.1.10 to 3.1.11 [\#40](https://github.com/microting/eform-service-timeplanning-plugin/issues/40)
 - Bump Microting.TimePlanningBase from 2.0.19 to 2.0.21 [\#35](https://github.com/microting/eform-service-timeplanning-plugin/issues/35)
 - Bump Microting.eFormApi.BasePn from 3.1.9 to 3.1.10 [\#34](https://github.com/microting/eform-service-timeplanning-plugin/issues/34)
 - Bump Microting.eForm from 5.3.12 to 5.3.15 [\#33](https://github.com/microting/eform-service-timeplanning-plugin/issues/33)
@@ -55,6 +65,7 @@
 **Merged pull requests:**
 
 - Bump Microting.TimePlanningBase from 1.0.4 to 1.0.5 [\#20](https://github.com/microting/eform-service-timeplanning-plugin/pull/20) ([dependabot[bot]](https://github.com/apps/dependabot))
+- Bump Pomelo.EntityFrameworkCore.MySql from 5.0.2 to 6.0.0 [\#2](https://github.com/microting/eform-service-timeplanning-plugin/pull/2) ([dependabot[bot]](https://github.com/apps/dependabot))
 
 ## [v1.0.1](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.1) (2021-11-25)
 
@@ -68,7 +79,6 @@
 **Merged pull requests:**
 
 - Bump Microting.eForm from 5.2.57 to 5.3.10 [\#17](https://github.com/microting/eform-service-timeplanning-plugin/pull/17) ([dependabot[bot]](https://github.com/apps/dependabot))
-- Bump Pomelo.EntityFrameworkCore.MySql from 5.0.2 to 6.0.0 [\#2](https://github.com/microting/eform-service-timeplanning-plugin/pull/2) ([dependabot[bot]](https://github.com/apps/dependabot))
 
 ## [v1.0.0](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.0) (2021-11-11)
 
