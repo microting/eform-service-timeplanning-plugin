@@ -212,28 +212,31 @@ namespace ServiceTimePlanningPlugin.Handlers
                         && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
                     {
                         double preSumFlex = timePlanning.SumFlex;
-                        var list = await _dbContext.PlanRegistrations.Where(x => timePlanning.Date >= DateTime.Now.AddDays(-maxHistoryDays) && x.Date <= DateTime.UtcNow
-                                && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id)
+                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.Date <= DateTime.UtcNow
+                                && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
-                            planRegistration.SumFlex = planRegistration.Flex + preSumFlex;
-                            theMessage =
-                                await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
-                            switch (language.LanguageCode)
+                            planRegistration.SumFlex = planRegistration.Flex + preSumFlex - planRegistration.PaiedOutFlex;
+                            if (planRegistration.StatusCaseId != 0)
                             {
-                                case "da":
-                                    messageText = theMessage != null ? theMessage.DaName : "";
-                                    break;
-                                case "de":
-                                    messageText = theMessage != null ? theMessage.DeName : "";
-                                    break;
-                                default:
-                                    messageText = theMessage != null ? theMessage.EnName : "";
-                                    break;
+                                theMessage =
+                                    await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
+                                switch (language.LanguageCode)
+                                {
+                                    case "da":
+                                        messageText = theMessage != null ? theMessage.DaName : "";
+                                        break;
+                                    case "de":
+                                        messageText = theMessage != null ? theMessage.DeName : "";
+                                        break;
+                                    default:
+                                        messageText = theMessage != null ? theMessage.EnName : "";
+                                        break;
+                                }
+                                planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             }
-                            planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             await planRegistration.Update(_dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
@@ -293,9 +296,9 @@ namespace ServiceTimePlanningPlugin.Handlers
                              $"<strong>{Translations.Message}:</strong><br/>" +
                              $"{messageText}<br/><br/>" +
                              $"<strong>{Translations.Comments}:</strong><br/>" +
-                             $"{planRegistration.WorkerComment.Replace("\n", "<br/>")}<br/><br/>" +
+                             $"{planRegistration.WorkerComment?.Replace("\n", "<br/>")}<br/><br/>" +
                              $"<strong>{Translations.Comment_office}:</strong><br/>" +
-                             $"{planRegistration.CommentOffice.Replace("\n", "<br/>")}<br/><br/>"// +
+                             $"{planRegistration.CommentOffice?.Replace("\n", "<br/>")}<br/><br/>"// +
                              // $"<strong>{Translations.Comment_office_all}:</strong><br/>" +
                              // $"{planRegistration.CommentOffice}<br/>"
             };
