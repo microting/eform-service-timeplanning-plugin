@@ -184,11 +184,11 @@ namespace ServiceTimePlanningPlugin.Handlers
                             && x.SdkSitId == site.MicrotingUid).OrderByDescending(x => x.Date).FirstOrDefaultAsync();
                     if (preTimePlanning != null)
                     {
-                        timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex;
+                        timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex - timePlanning.PaiedOutFlex;
                     }
                     else
                     {
-                        timePlanning.SumFlex = timePlanning.Flex;
+                        timePlanning.SumFlex = timePlanning.Flex - timePlanning.PaiedOutFlex;
                     }
 
                     Message theMessage =
@@ -293,9 +293,9 @@ namespace ServiceTimePlanningPlugin.Handlers
                              $"<strong>{Translations.Message}:</strong><br/>" +
                              $"{messageText}<br/><br/>" +
                              $"<strong>{Translations.Comments}:</strong><br/>" +
-                             $"{planRegistration.WorkerComment.Replace("\r", "<br/>")}<br/><br/>" +
+                             $"{planRegistration.WorkerComment.Replace("\n", "<br/>")}<br/><br/>" +
                              $"<strong>{Translations.Comment_office}:</strong><br/>" +
-                             $"{planRegistration.CommentOffice}<br/><br/>"// +
+                             $"{planRegistration.CommentOffice.Replace("\n", "<br/>")}<br/><br/>"// +
                              // $"<strong>{Translations.Comment_office_all}:</strong><br/>" +
                              // $"{planRegistration.CommentOffice}<br/>"
             };
