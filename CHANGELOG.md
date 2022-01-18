@@ -1,5 +1,15 @@
 # Changelog
 
+## [v1.0.15](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.15) (2022-01-18)
+
+[Full Changelog](https://github.com/microting/eform-service-timeplanning-plugin/compare/v1.0.14...v1.0.15)
+
+**Implemented enhancements:**
+
+- Bump Microting.TimePlanningBase from 2.0.27 to 2.0.28 [\#57](https://github.com/microting/eform-service-timeplanning-plugin/issues/57)
+- Bump Microting.eFormApi.BasePn from 3.1.16 to 3.1.18 [\#56](https://github.com/microting/eform-service-timeplanning-plugin/issues/56)
+- Bump Microting.eForm from 5.3.22 to 5.4.1 [\#55](https://github.com/microting/eform-service-timeplanning-plugin/issues/55)
+
 ## [v1.0.14](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.14) (2022-01-17)
 
 [Full Changelog](https://github.com/microting/eform-service-timeplanning-plugin/compare/v1.0.13...v1.0.14)
@@ -115,6 +125,7 @@
 
 **Merged pull requests:**
 
+- Bump Microting.eForm from 5.2.57 to 5.3.10 [\#17](https://github.com/microting/eform-service-timeplanning-plugin/pull/17) ([dependabot[bot]](https://github.com/apps/dependabot))
 - Bump Pomelo.EntityFrameworkCore.MySql from 5.0.2 to 6.0.0 [\#2](https://github.com/microting/eform-service-timeplanning-plugin/pull/2) ([dependabot[bot]](https://github.com/apps/dependabot))
 
 ## [v1.0.0](https://github.com/microting/eform-service-timeplanning-plugin/tree/v1.0.0) (2021-11-11)
@@ -123,7 +134,6 @@
 
 **Merged pull requests:**
 
-- Bump Microting.eForm from 5.2.57 to 5.3.10 [\#17](https://github.com/microting/eform-service-timeplanning-plugin/pull/17) ([dependabot[bot]](https://github.com/apps/dependabot))
 - Bump NUnit3TestAdapter from 4.0.0 to 4.1.0 [\#4](https://github.com/microting/eform-service-timeplanning-plugin/pull/4) ([dependabot[bot]](https://github.com/apps/dependabot))
 - Bump Microsoft.NET.Test.Sdk from 16.11.0 to 17.0.0 [\#3](https://github.com/microting/eform-service-timeplanning-plugin/pull/3) ([dependabot[bot]](https://github.com/apps/dependabot))
 - Add service [\#1](https://github.com/microting/eform-service-timeplanning-plugin/pull/1) ([sanioooook](https://github.com/sanioooook))
