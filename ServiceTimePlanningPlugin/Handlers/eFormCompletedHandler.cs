@@ -46,17 +46,18 @@ namespace ServiceTimePlanningPlugin.Handlers
     public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
     {
         private readonly eFormCore.Core _sdkCore;
-        private readonly TimePlanningPnDbContext _dbContext;
+        private readonly DbContextHelper _dbContextHelper;
 
 
         public EFormCompletedHandler(eFormCore.Core sdkCore, DbContextHelper dbContextHelper)
         {
-            _dbContext = dbContextHelper.GetDbContext();
+            _dbContextHelper = dbContextHelper;
             _sdkCore = sdkCore;
         }
 
         public async Task Handle(eFormCompleted message)
         {
+            TimePlanningPnDbContext dbContext = _dbContextHelper.GetDbContext();
             Console.WriteLine($"EFormCompletedHandler .Handle called");
             Console.WriteLine($"message.CheckId: {message.CheckId}");
             Console.WriteLine($"message.MicrotingId: {message.MicrotingId}");
@@ -64,21 +65,21 @@ namespace ServiceTimePlanningPlugin.Handlers
             Console.WriteLine($"message.CheckUId: {message.CheckUId}");
             try
             {
-                var eformIdString = await _dbContext.PluginConfigurationValues
+                var eformIdString = await dbContext.PluginConfigurationValues
                     .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:EformId");
 
                 if (eformIdString == null)
                 {
                     return;
                 }
-                var folderId  = int.Parse(_dbContext.PluginConfigurationValues
+                var folderId  = int.Parse(dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:FolderId")
                     .Value);
                 var eformId = int.Parse(eformIdString.Value);
-                var infoeFormId = int.Parse(_dbContext.PluginConfigurationValues
+                var infoeFormId = int.Parse(dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:InfoeFormId")
                     .Value);
-                var maxHistoryDays = int.Parse(_dbContext.PluginConfigurationValues
+                var maxHistoryDays = int.Parse(dbContext.PluginConfigurationValues
                     .First(x => x.Name == "TimePlanningBaseSettings:MaxHistoryDays").Value);
 
                 await using var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
@@ -121,7 +122,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     var shift2Pause = string.IsNullOrEmpty(fieldValues[5].Value) ? 0 : int.Parse(fieldValues[5].Value);
                     var shift2Stop = string.IsNullOrEmpty(fieldValues[6].Value) ? 0 : int.Parse(fieldValues[6].Value);
 
-                    var timePlanning = await _dbContext.PlanRegistrations
+                    var timePlanning = await dbContext.PlanRegistrations
                         .Where(x => x.SdkSitId == site.MicrotingUid
                                     && x.Date == dateValue)
                         .FirstOrDefaultAsync();
@@ -142,7 +143,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             WorkerComment = fieldValues[7].Value,
                         };
 
-                        await timePlanning.Create(_dbContext);
+                        await timePlanning.Create(dbContext);
                     }
                     else
                     {
@@ -162,7 +163,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             }
                             timePlanning.WorkerComment += fieldValues[7].Value;
 
-                            await timePlanning.Update(_dbContext);
+                            await timePlanning.Update(dbContext);
                         }
                     }
 
@@ -180,7 +181,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     timePlanning.NettoHours = hours;
                     timePlanning.Flex = hours - timePlanning.PlanHours;
                     var preTimePlanning =
-                        await _dbContext.PlanRegistrations.Where(x => x.Date < timePlanning.Date
+                        await dbContext.PlanRegistrations.AsNoTracking().Where(x => x.Date < timePlanning.Date
                             && x.SdkSitId == site.MicrotingUid).OrderByDescending(x => x.Date).FirstOrDefaultAsync();
                     if (preTimePlanning != null)
                     {
@@ -192,7 +193,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     }
 
                     Message theMessage =
-                        await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
+                        await dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
                     string messageText;
                     switch (language.LanguageCode)
                     {
@@ -207,12 +208,12 @@ namespace ServiceTimePlanningPlugin.Handlers
                             break;
                     }
                     timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
-                    await timePlanning.Update(_dbContext);
-                    if (_dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
+                    await timePlanning.Update(dbContext);
+                    if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
                         && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
                     {
                         double preSumFlex = timePlanning.SumFlex;
-                        var list = await _dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.Date <= DateTime.UtcNow
+                        var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.Date <= DateTime.UtcNow
                                 && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
@@ -222,7 +223,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             if (planRegistration.StatusCaseId != 0)
                             {
                                 theMessage =
-                                    await _dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
+                                    await dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
                                 switch (language.LanguageCode)
                                 {
                                     case "da":
@@ -237,7 +238,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                                 }
                                 planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             }
-                            await planRegistration.Update(_dbContext);
+                            await planRegistration.Update(dbContext);
                             preSumFlex = planRegistration.SumFlex;
                         }
                     }
@@ -289,10 +290,10 @@ namespace ServiceTimePlanningPlugin.Handlers
                              $"{Translations.Shift_2__start}: {planRegistration.Options[planRegistration.Start2Id > 0 ? planRegistration.Start2Id - 1 : 0]}<br/>" +
                              $"{Translations.Shift_2__pause}: {planRegistration.Options[planRegistration.Pause2Id > 0 ? planRegistration.Pause2Id - 1 : 0]}<br/>" +
                              $"{Translations.Shift_2__end}: {planRegistration.Options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/><br/>" +
-                             $"<strong>{Translations.NettoHours}: {planRegistration.NettoHours:0.00}</strong><br/><br/>" +
-                             $"{Translations.Flex}: {planRegistration.Flex:0.00}<br/>" +
-                             $"{Translations.SumFlex}: {planRegistration.SumFlex:0.00}<br/>" +
-                             $"{Translations.PaidOutFlex}: {planRegistration.PaiedOutFlex:0.00}<br/><br/>" +
+                             $"<strong>{Translations.NettoHours}: {Math.Round(planRegistration.NettoHours, 2) :0.00}</strong><br/><br/>" +
+                             $"{Translations.Flex}: {Math.Round(planRegistration.Flex ,2):0.00}<br/>" +
+                             $"{Translations.SumFlex}: {Math.Round(planRegistration.SumFlex, 2):0.00}<br/>" +
+                             $"{Translations.PaidOutFlex}: {Math.Round(planRegistration.PaiedOutFlex, 2):0.00}<br/><br/>" +
                              $"<strong>{Translations.Message}:</strong><br/>" +
                              $"{messageText}<br/><br/>" +
                              $"<strong>{Translations.Comments}:</strong><br/>" +
