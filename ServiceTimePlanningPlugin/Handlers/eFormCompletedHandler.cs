@@ -185,11 +185,13 @@ namespace ServiceTimePlanningPlugin.Handlers
                             && x.SdkSitId == site.MicrotingUid).OrderByDescending(x => x.Date).FirstOrDefaultAsync();
                     if (preTimePlanning != null)
                     {
-                        timePlanning.SumFlex = preTimePlanning.SumFlex + timePlanning.Flex - timePlanning.PaiedOutFlex;
+                        timePlanning.SumFlexEnd = preTimePlanning.SumFlexEnd + timePlanning.Flex - timePlanning.PaiedOutFlex;
+                        timePlanning.SumFlexStart = preTimePlanning.SumFlexEnd;
                     }
                     else
                     {
-                        timePlanning.SumFlex = timePlanning.Flex - timePlanning.PaiedOutFlex;
+                        timePlanning.SumFlexEnd = timePlanning.Flex - timePlanning.PaiedOutFlex;
+                        timePlanning.SumFlexStart = 0;
                     }
 
                     Message theMessage =
@@ -212,14 +214,14 @@ namespace ServiceTimePlanningPlugin.Handlers
                     if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
                         && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
                     {
-                        double preSumFlex = timePlanning.SumFlex;
+                        double preSumFlexStart = timePlanning.SumFlexEnd;
                         var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.Date <= DateTime.UtcNow
                                 && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
-                            planRegistration.SumFlex = planRegistration.Flex + preSumFlex - planRegistration.PaiedOutFlex;
+                            planRegistration.SumFlexEnd = planRegistration.Flex + preSumFlexStart - planRegistration.PaiedOutFlex;
                             if (planRegistration.StatusCaseId != 0)
                             {
                                 theMessage =
@@ -239,7 +241,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                                 planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             }
                             await planRegistration.Update(dbContext);
-                            preSumFlex = planRegistration.SumFlex;
+                            preSumFlexStart = planRegistration.SumFlexEnd;
                         }
                     }
 
@@ -292,7 +294,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                              $"{Translations.Shift_2__end}: {planRegistration.Options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/><br/>" +
                              $"<strong>{Translations.NettoHours}: {Math.Round(planRegistration.NettoHours, 2) :0.00}</strong><br/><br/>" +
                              $"{Translations.Flex}: {Math.Round(planRegistration.Flex ,2):0.00}<br/>" +
-                             $"{Translations.SumFlex}: {Math.Round(planRegistration.SumFlex, 2):0.00}<br/>" +
+                             $"{Translations.SumFlexEnd}: {Math.Round(planRegistration.SumFlexEnd, 2):0.00}<br/>" +
                              $"{Translations.PaidOutFlex}: {Math.Round(planRegistration.PaiedOutFlex, 2):0.00}<br/><br/>" +
                              $"<strong>{Translations.Message}:</strong><br/>" +
                              $"{messageText}<br/><br/>" +
