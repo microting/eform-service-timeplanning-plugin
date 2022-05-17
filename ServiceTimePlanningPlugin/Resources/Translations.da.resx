@@ -56,10 +56,10 @@
     <data name="Shift 2: pause" xml:space="preserve">
         <value>Skift 2: pause</value>
     </data>
-    <data name="SumFlex" xml:space="preserve">
-        <value>Flex sum</value>
-    </data>
     <data name="Shift 2: start" xml:space="preserve">
         <value>Skift 2: start</value>
+    </data>
+    <data name="SumFlexEnd" xml:space="preserve">
+        <value>Flex sum</value>
     </data>
 </root>
