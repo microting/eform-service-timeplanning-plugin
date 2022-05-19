@@ -221,6 +221,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         foreach (PlanRegistration planRegistration in list)
                         {
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
+                            planRegistration.SumFlexStart = preSumFlexStart;
                             planRegistration.SumFlexEnd = planRegistration.Flex + preSumFlexStart - planRegistration.PaiedOutFlex;
                             if (planRegistration.StatusCaseId != 0)
                             {
