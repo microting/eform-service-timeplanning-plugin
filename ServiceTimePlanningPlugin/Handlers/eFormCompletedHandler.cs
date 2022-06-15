@@ -215,7 +215,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                         && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
                     {
                         double preSumFlexStart = timePlanning.SumFlexEnd;
-                        var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date && x.Date <= DateTime.UtcNow
+                        var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
                                 && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
                             .OrderBy(x => x.Date).ToListAsync();
                         foreach (PlanRegistration planRegistration in list)
@@ -239,7 +239,11 @@ namespace ServiceTimePlanningPlugin.Handlers
                                         messageText = theMessage != null ? theMessage.EnName : "";
                                         break;
                                 }
-                                planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
+
+                                if (planRegistration.Date <= DateTime.UtcNow)
+                                {
+                                    planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);   
+                                }
                             }
                             await planRegistration.Update(dbContext);
                             preSumFlexStart = planRegistration.SumFlexEnd;
