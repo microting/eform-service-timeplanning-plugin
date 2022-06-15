@@ -211,8 +211,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     }
                     timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                     await timePlanning.Update(dbContext);
-                    if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.Date <= DateTime.UtcNow
-                        && x.SdkSitId == site.MicrotingUid && x.StatusCaseId != 0 && x.Id != timePlanning.Id))
+                    if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id))
                     {
                         double preSumFlexStart = timePlanning.SumFlexEnd;
                         var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
