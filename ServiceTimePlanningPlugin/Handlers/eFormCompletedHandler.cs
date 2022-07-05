@@ -132,7 +132,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     {
                         timePlanning = new PlanRegistration
                         {
-                            SdkSitId = (int)site.MicrotingUid,
+                            SdkSitId = (int)site.MicrotingUid!,
                             Date = dateValue,
                             Pause1Id = shift1Pause,
                             Pause2Id = shift2Pause,
@@ -141,6 +141,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             Stop1Id = shift1Stop,
                             Stop2Id = shift2Stop,
                             WorkerComment = fieldValues[7].Value,
+                            DataFromDevice = true
                         };
 
                         await timePlanning.Create(dbContext);
@@ -162,6 +163,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                                 timePlanning.WorkerComment += "<br/>";
                             }
                             timePlanning.WorkerComment += fieldValues[7].Value;
+                            timePlanning.DataFromDevice = true;
 
                             await timePlanning.Update(dbContext);
                         }
@@ -222,7 +224,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                             planRegistration.SumFlexStart = preSumFlexStart;
                             planRegistration.SumFlexEnd = planRegistration.Flex + preSumFlexStart - planRegistration.PaiedOutFlex;
-                            if (planRegistration.StatusCaseId != 0)
+                            if (planRegistration.DataFromDevice)
                             {
                                 theMessage =
                                     await dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
