@@ -83,7 +83,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     .First(x => x.Name == "TimePlanningBaseSettings:MaxHistoryDays").Value);
 
                 await using var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
-                var site = await sdkDbContext.Sites.SingleOrDefaultAsync(x => x.MicrotingUid == message.SiteId);
+                var site = await sdkDbContext.Sites.FirstOrDefaultAsync(x => x.MicrotingUid == message.SiteId);
                 if (site == null)
                 {
                     Console.WriteLine($"Site with MicrotingUid: {message.SiteId} not found");
@@ -96,7 +96,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     .LastOrDefaultAsync();
                 if (cls != null && cls.CheckListId == eformId)
                 {
-                    var language = await sdkDbContext.Languages.SingleOrDefaultAsync(x => x.Id == site.LanguageId);
+                    var language = await sdkDbContext.Languages.FirstOrDefaultAsync(x => x.Id == site.LanguageId);
                     if (language == null)
                     {
                         Console.WriteLine($"Language with Id: {site.LanguageId} not found");
@@ -197,7 +197,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                     }
 
                     Message theMessage =
-                        await dbContext.Messages.SingleOrDefaultAsync(x => x.Id == timePlanning.MessageId);
+                        await dbContext.Messages.FirstOrDefaultAsync(x => x.Id == timePlanning.MessageId);
                     string messageText;
                     switch (language.LanguageCode)
                     {
@@ -227,7 +227,7 @@ namespace ServiceTimePlanningPlugin.Handlers
                             if (planRegistration.DataFromDevice)
                             {
                                 theMessage =
-                                    await dbContext.Messages.SingleOrDefaultAsync(x => x.Id == planRegistration.MessageId);
+                                    await dbContext.Messages.FirstOrDefaultAsync(x => x.Id == planRegistration.MessageId);
                                 switch (language.LanguageCode)
                                 {
                                     case "da":
@@ -243,7 +243,7 @@ namespace ServiceTimePlanningPlugin.Handlers
 
                                 if (planRegistration.Date <= DateTime.UtcNow)
                                 {
-                                    planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);   
+                                    planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                                 }
                             }
                             await planRegistration.Update(dbContext);
@@ -267,8 +267,8 @@ namespace ServiceTimePlanningPlugin.Handlers
                     await core.CaseDelete(planRegistration.StatusCaseId);
             }
             await using var sdkDbContext = core.DbContextHelper.GetDbContext();
-            var language = await sdkDbContext.Languages.SingleAsync(x => x.Id == siteInfo.LanguageId);
-            var folder = await sdkDbContext.Folders.SingleOrDefaultAsync(x => x.Id == folderId);
+            var language = await sdkDbContext.Languages.FirstAsync(x => x.Id == siteInfo.LanguageId);
+            var folder = await sdkDbContext.Folders.FirstOrDefaultAsync(x => x.Id == folderId);
             var mainElement = await core.ReadeForm(eFormId, language);
             Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo(language.LanguageCode);
             CultureInfo ci = new CultureInfo(language.LanguageCode);
