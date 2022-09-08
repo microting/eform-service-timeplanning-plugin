@@ -151,30 +151,21 @@ namespace ServiceTimePlanningPlugin
 
         public bool Stop(bool shutdownReallyFast)
         {
-            try
+            if (_coreAvailable && !_coreStatChanging)
             {
-                if (_coreAvailable && !_coreStatChanging)
+                _coreStatChanging = true;
+
+                _coreAvailable = false;
+
+                while (_coreThreadRunning)
                 {
-                    _coreStatChanging = true;
-
-                    _coreAvailable = false;
-
-                    while (_coreThreadRunning)
-                    {
-                        Thread.Sleep(100);
-                        _bus.Dispose();
-                    }
-                    _sdkCore.Close();
-
-                    _coreStatChanging = false;
+                    Thread.Sleep(100);
+                    _bus.Dispose();
                 }
-            }
-            catch (ThreadAbortException)
-            {
-                //"Even if you handle it, it will be automatically re-thrown by the CLR at the end of the try/catch/finally."
-                Thread.ResetAbort(); //This ends the re-throwning
-            }
+                _sdkCore.Close();
 
+                _coreStatChanging = false;
+            }
             return true;
         }
 
@@ -183,7 +174,7 @@ namespace ServiceTimePlanningPlugin
             return true;
         }
 
-        public void StartSdkCoreSqlOnly(string sdkConnectionString)
+        private void StartSdkCoreSqlOnly(string sdkConnectionString)
         {
             _sdkCore = new eFormCore.Core();
 
