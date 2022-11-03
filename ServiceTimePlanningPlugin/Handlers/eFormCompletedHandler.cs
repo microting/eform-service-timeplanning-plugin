@@ -273,7 +273,8 @@ namespace ServiceTimePlanningPlugin.Handlers
             Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo(language.LanguageCode);
             CultureInfo ci = new CultureInfo(language.LanguageCode);
             mainElement.Label = planRegistration.Date.ToString("dddd dd. MMM yyyy", ci);
-            mainElement.EndDate = DateTime.UtcNow.AddDays(maxHistoryDays);
+            mainElement.EndDate = planRegistration.Date.AddDays(maxHistoryDays);
+            mainElement.StartDate = planRegistration.Date.AddDays(-1).ToUniversalTime();
             DateTime startDate = new DateTime(2020, 1, 1);
             mainElement.DisplayOrder = (startDate - planRegistration.Date).Days;
             DataElement element = (DataElement)mainElement.ElementList.First();
