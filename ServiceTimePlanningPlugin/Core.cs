@@ -93,7 +93,6 @@ namespace ServiceTimePlanningPlugin
 
                 var pluginDbName = $"Database={dbPrefix}_eform-angular-time-planning-plugin;";
                 var connectionString = sdkConnectionString.Replace(dbNameSection, pluginDbName);
-                string rabbitmqHost = connectionString.Contains("frontend") ? $"frontend-{dbPrefix}-rabbitmq" : "localhost";
 
                 if (!_coreAvailable && !_coreStatChanging)
                 {
@@ -117,6 +116,10 @@ namespace ServiceTimePlanningPlugin
                     _coreStatChanging = false;
 
                     StartSdkCoreSqlOnly(sdkConnectionString);
+                    Console.WriteLine($"Connection string: {sdkConnectionString}");
+
+                    var rabbitmqHost = _sdkCore.GetSdkSetting(Settings.rabbitMqHost).GetAwaiter().GetResult();
+                    Console.WriteLine($"rabbitmqHost: {rabbitmqHost}");
 
                     string temp = _dbContext.PluginConfigurationValues
                         .SingleOrDefault(x => x.Name == "TimePlanningBaseSettings:MaxParallelism")?.Value;
@@ -178,7 +181,7 @@ namespace ServiceTimePlanningPlugin
         {
             _sdkCore = new eFormCore.Core();
 
-            _sdkCore.StartSqlOnly(sdkConnectionString);
+            _sdkCore.StartSqlOnly(sdkConnectionString).GetAwaiter().GetResult();
         }
     }
 }
