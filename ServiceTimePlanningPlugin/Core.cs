@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace ServiceTimePlanningPlugin;
+﻿namespace ServiceTimePlanningPlugin;
 
 using System;
 using System.ComponentModel.Composition;
