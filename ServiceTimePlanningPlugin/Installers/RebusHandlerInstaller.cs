@@ -30,13 +30,12 @@ using Rebus.Handlers;
 using ServiceTimePlanningPlugin.Handlers;
 using ServiceTimePlanningPlugin.Messages;
 
-namespace ServiceTimePlanningPlugin.Installers
+namespace ServiceTimePlanningPlugin.Installers;
+
+public class RebusHandlerInstaller : IWindsorInstaller
 {
-    public class RebusHandlerInstaller : IWindsorInstaller
+    public void Install(IWindsorContainer container, IConfigurationStore store)
     {
-        public void Install(IWindsorContainer container, IConfigurationStore store)
-        {
-            container.Register(Component.For<IHandleMessages<eFormCompleted>>().ImplementedBy<EFormCompletedHandler>().LifestyleTransient());
-        }
+        container.Register(Component.For<IHandleMessages<eFormCompleted>>().ImplementedBy<EFormCompletedHandler>().LifestyleTransient());
     }
 }
