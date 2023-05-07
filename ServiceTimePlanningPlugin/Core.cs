@@ -1,4 +1,6 @@
-﻿namespace ServiceTimePlanningPlugin;
+﻿using System.Threading.Tasks;
+
+namespace ServiceTimePlanningPlugin;
 
 using System;
 using System.ComponentModel.Composition;
@@ -63,11 +65,7 @@ public class Core : ISdkEventHandler
 
         if (trigger.MicrotingUId != null && trigger.CheckUId != null)
         {
-            int caseId = (int)trigger.MicrotingUId;
-            int checkListId = trigger.CheckListId;
-            int checkUId = (int)trigger.CheckUId;
-            int siteId = trigger.SiteUId;
-            _bus.SendLocal(new eFormCompleted(caseId, checkListId, checkUId, siteId));
+            _bus.SendLocal(new eFormCompleted((int)trigger.MicrotingUId, trigger.SiteUId));
         }
     }
 
@@ -144,6 +142,8 @@ public class Core : ISdkEventHandler
                 _bus = _container.Resolve<IBus>();
             }
             Console.WriteLine("ServiceTimePlanningPlugin started");
+
+            CheckRegistrationIntegrity().GetAwaiter().GetResult();
             return true;
         }
         catch (Exception ex)
@@ -184,5 +184,44 @@ public class Core : ISdkEventHandler
         _sdkCore = new eFormCore.Core();
 
         _sdkCore.StartSqlOnly(sdkConnectionString).GetAwaiter().GetResult();
+    }
+
+    private async Task CheckRegistrationIntegrity()
+    {
+        var sdkDbContext = _sdkCore.DbContextHelper.GetDbContext();
+
+        var dbContext = _dbContextHelper.GetDbContext();
+
+        var siteIdsForCheck = await dbContext.PluginConfigurationValues
+            .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:SiteIdsForCheck");
+
+        var maxHistoryDays = await dbContext.PluginConfigurationValues
+            .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:MaxHistoryDays");
+
+        if (string.IsNullOrEmpty(siteIdsForCheck?.Value))
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(maxHistoryDays?.Value))
+        {
+            return;
+        }
+
+        var siteIds = siteIdsForCheck.Value.Split(",").Select(int.Parse).ToList();
+
+        foreach (var siteId in siteIds)
+        {
+            var cases = await sdkDbContext.Cases
+                .Where(x => x.SiteId == siteId && x.DoneAt > DateTime.Now.AddDays(int.Parse(maxHistoryDays.Value)))
+                .ToListAsync();
+
+            var site = await sdkDbContext.Sites.SingleAsync(x => x.Id == siteId);
+
+            foreach (var @case in cases)
+            {
+                await _bus.SendLocal(new eFormCompleted((int)@case.MicrotingUid!, (int)site.MicrotingUid!));
+            }
+        }
     }
 }
