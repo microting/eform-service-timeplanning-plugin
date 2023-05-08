@@ -213,7 +213,7 @@ public class Core : ISdkEventHandler
         foreach (var siteId in siteIds)
         {
             var cases = await sdkDbContext.Cases
-                .Where(x => x.SiteId == siteId && x.DoneAt > DateTime.Now.AddDays(int.Parse(maxHistoryDays.Value)))
+                .Where(x => x.SiteId == siteId && x.DoneAt > DateTime.Now.AddDays(-int.Parse(maxHistoryDays.Value)))
                 .ToListAsync();
 
             var site = await sdkDbContext.Sites.SingleAsync(x => x.Id == siteId);
