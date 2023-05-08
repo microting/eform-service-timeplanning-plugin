@@ -59,7 +59,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
     {
         TimePlanningPnDbContext dbContext = _dbContextHelper.GetDbContext();
         Console.WriteLine($"EFormCompletedHandler .Handle called");
-        Console.WriteLine($"message.MicrotingUid: {message.MicrotingUid}");
+        Console.WriteLine($"message.CheckUid: {message.CheckUid}");
         Console.WriteLine($"message.SiteId: {message.SiteId}");
         try
         {
@@ -89,7 +89,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
             }
             var cls = await sdkDbContext.Cases
                 .Where(x => x.SiteId == site.Id)
-                .Where(x => x.MicrotingUid == message.MicrotingUid)
+                .Where(x => x.MicrotingCheckUid == message.CheckUid)
                 .OrderBy(x => x.DoneAt)
                 .LastOrDefaultAsync();
             if (cls != null && cls.CheckListId == eformId)

@@ -63,9 +63,9 @@ public class Core : ISdkEventHandler
     {
         CaseDto trigger = (CaseDto)sender;
 
-        if (trigger.MicrotingUId != null && trigger.CheckUId != null)
+        if (trigger.CheckUId != null)
         {
-            _bus.SendLocal(new eFormCompleted((int)trigger.MicrotingUId, trigger.SiteUId));
+            _bus.SendLocal(new eFormCompleted((int)trigger.CheckUId, trigger.SiteUId));
         }
     }
 
@@ -220,7 +220,7 @@ public class Core : ISdkEventHandler
 
             foreach (var @case in cases)
             {
-                await _bus.SendLocal(new eFormCompleted((int)@case.MicrotingUid!, (int)site.MicrotingUid!));
+                await _bus.SendLocal(new eFormCompleted((int)@case.MicrotingCheckUid!, (int)site.MicrotingUid!));
             }
         }
     }

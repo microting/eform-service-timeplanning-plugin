@@ -25,12 +25,12 @@ namespace ServiceTimePlanningPlugin.Messages;
 
 public class eFormCompleted
 {
-    public int MicrotingUid { get; protected set; }
+    public int CheckUid { get; protected set; }
     public int SiteId { get; protected set; }
 
-    public eFormCompleted(int microtingUid, int siteId)
+    public eFormCompleted(int checkUid, int siteId)
     {
-        MicrotingUid = microtingUid;
+        CheckUid = checkUid;
         SiteId = siteId;
     }
 }
