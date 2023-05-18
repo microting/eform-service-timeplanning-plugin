@@ -167,7 +167,7 @@ public class Core : ISdkEventHandler
                 Thread.Sleep(100);
                 _bus.Dispose();
             }
-            _sdkCore.Close();
+            _sdkCore.Close().GetAwaiter().GetResult();
 
             _coreStatChanging = false;
         }
