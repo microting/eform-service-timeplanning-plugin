@@ -92,6 +92,16 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 .Where(x => x.MicrotingCheckUid == message.CheckUid)
                 .OrderBy(x => x.DoneAt)
                 .LastOrDefaultAsync();
+
+            var dateField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373285");
+            var shift1StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373286");
+            var shift1PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373292");
+            var shift1StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373287");
+            var shift2StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373293");
+            var shift2PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373294");
+            var shift2StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373295");
+            var commentField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373288");
+
             if (cls != null && cls.CheckListId == eformId)
             {
                 var language = await sdkDbContext.Languages.FirstOrDefaultAsync(x => x.Id == site.LanguageId);
@@ -102,7 +112,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 }
                 var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { cls.Id }, language);
 
-                var dateValue = DateTime.Parse(fieldValues.First().Value);
+                var dateValue = DateTime.Parse(fieldValues.First(x => x.FieldId == dateField.Id).Value);
                 if (dateValue < DateTime.UtcNow.AddDays(-maxHistoryDays))
                 {
                     Console.WriteLine("The registration is older than maxHistoryDays");
@@ -113,12 +123,12 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     Console.WriteLine("The registration is in the future");
                     return;
                 }
-                var shift1Start = string.IsNullOrEmpty(fieldValues[1].Value) ? 0 : int.Parse(fieldValues[1].Value);
-                var shift1Pause = string.IsNullOrEmpty(fieldValues[2].Value) ? 0 : int.Parse(fieldValues[2].Value);
-                var shift1Stop = string.IsNullOrEmpty(fieldValues[3].Value) ? 0 : int.Parse(fieldValues[3].Value);
-                var shift2Start = string.IsNullOrEmpty(fieldValues[4].Value) ? 0 : int.Parse(fieldValues[4].Value);
-                var shift2Pause = string.IsNullOrEmpty(fieldValues[5].Value) ? 0 : int.Parse(fieldValues[5].Value);
-                var shift2Stop = string.IsNullOrEmpty(fieldValues[6].Value) ? 0 : int.Parse(fieldValues[6].Value);
+                var shift1Start = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift1StartField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift1StartField.Id).Value);
+                var shift1Pause = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift1PauseField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift1PauseField.Id).Value);
+                var shift1Stop = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift1StopField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift1StopField.Id).Value);
+                var shift2Start = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift2StartField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift2StartField.Id).Value);
+                var shift2Pause = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift2PauseField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift2PauseField.Id).Value);
+                var shift2Stop = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift2StopField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift2StopField.Id).Value);
 
                 var timePlanning = await dbContext.PlanRegistrations
                     .Where(x => x.SdkSitId == site.MicrotingUid
@@ -138,7 +148,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         Start2Id = shift2Start,
                         Stop1Id = shift1Stop,
                         Stop2Id = shift2Stop,
-                        WorkerComment = fieldValues[7].Value,
+                        WorkerComment = fieldValues.First(x => x.FieldId == commentField.Id).Value,
                         DataFromDevice = true
                     };
 
