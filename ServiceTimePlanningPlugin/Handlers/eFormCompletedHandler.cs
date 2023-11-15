@@ -93,14 +93,14 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 .OrderBy(x => x.DoneAt)
                 .LastOrDefaultAsync();
 
-            var dateField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373285");
-            var shift1StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373286");
-            var shift1PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373292");
-            var shift1StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373287");
-            var shift2StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373293");
-            var shift2PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373294");
-            var shift2StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373295");
-            var commentField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373288");
+            var dateField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373285" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift1StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373286" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift1PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373292" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift1StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373287" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift2StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373293" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift2PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373294" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var shift2StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373295" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var commentField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373288" && x.WorkflowState != Constants.WorkflowStates.Removed);
 
             if (cls != null && cls.CheckListId == eformId)
             {
