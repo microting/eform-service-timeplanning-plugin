@@ -133,6 +133,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 var timePlanning = await dbContext.PlanRegistrations
                     .Where(x => x.SdkSitId == site.MicrotingUid
                                 && x.Date == dateValue)
+                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                     .FirstOrDefaultAsync();
 
 
@@ -191,8 +192,10 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 timePlanning.NettoHours = hours;
                 timePlanning.Flex = hours - timePlanning.PlanHours;
                 var preTimePlanning =
-                    await dbContext.PlanRegistrations.AsNoTracking().Where(x => x.Date < timePlanning.Date
-                        && x.SdkSitId == site.MicrotingUid).OrderByDescending(x => x.Date).FirstOrDefaultAsync();
+                    await dbContext.PlanRegistrations.AsNoTracking()
+                        .Where(x => x.Date < timePlanning.Date && x.SdkSitId == site.MicrotingUid)
+                        .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                        .OrderByDescending(x => x.Date).FirstOrDefaultAsync();
                 if (preTimePlanning != null)
                 {
                     timePlanning.SumFlexEnd = preTimePlanning.SumFlexEnd + timePlanning.Flex - timePlanning.PaiedOutFlex;
@@ -224,8 +227,9 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id))
                 {
                     double preSumFlexStart = timePlanning.SumFlexEnd;
-                    var list = await dbContext.PlanRegistrations.Where(x => x.Date > timePlanning.Date
-                                                                            && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
+                    var list = await dbContext.PlanRegistrations
+                        .Where(x => x.Date > timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
+                        .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                         .OrderBy(x => x.Date).ToListAsync();
                     foreach (PlanRegistration planRegistration in list)
                     {
