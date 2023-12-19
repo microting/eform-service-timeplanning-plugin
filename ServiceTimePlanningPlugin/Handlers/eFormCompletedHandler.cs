@@ -171,7 +171,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         {
                             timePlanning.WorkerComment += "<br/>";
                         }
-                        timePlanning.WorkerComment += fieldValues[7].Value;
+                        timePlanning.WorkerComment += fieldValues.First(x => x.FieldId == commentField.Id).Value;
                         timePlanning.DataFromDevice = true;
 
                         await timePlanning.Update(dbContext);
