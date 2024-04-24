@@ -179,14 +179,13 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 }
 
                 var minutesMultiplier = 5;
-                double nettoMinutes = 0;
 
-                nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
-                nettoMinutes = nettoMinutes - (timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0);
+                double nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
+                nettoMinutes -= timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0;
                 nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
-                nettoMinutes = nettoMinutes - (timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0);
+                nettoMinutes -= timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0;
 
-                nettoMinutes = nettoMinutes * minutesMultiplier;
+                nettoMinutes *= minutesMultiplier;
 
                 double hours = nettoMinutes / 60;
                 timePlanning.NettoHours = hours;
