@@ -264,11 +264,8 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
 
                             if (planRegistration.Date <= DateTime.UtcNow)
                             {
-                                if (registrationDevices.Any())
-                                {
-                                    planRegistration.StatusCaseId = await DeployResults(planRegistration,
-                                        maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
-                                }
+                                planRegistration.StatusCaseId = await DeployResults(planRegistration,
+                                    maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
                             }
                         }
                         await planRegistration.Update(dbContext);
