@@ -221,7 +221,17 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         messageText = theMessage != null ? theMessage.EnName : "";
                         break;
                 }
-                timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
+
+                var registrationDevices = await dbContext.RegistrationDevices
+                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                    .ToListAsync().ConfigureAwait(false);
+
+                if (registrationDevices.Any())
+                {
+                    timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore,
+                        site, folderId, messageText);
+                }
+
                 await timePlanning.Update(dbContext);
                 if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id))
                 {
@@ -254,7 +264,11 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
 
                             if (planRegistration.Date <= DateTime.UtcNow)
                             {
-                                planRegistration.StatusCaseId = await DeployResults(planRegistration, maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
+                                if (registrationDevices.Any())
+                                {
+                                    planRegistration.StatusCaseId = await DeployResults(planRegistration,
+                                        maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
+                                }
                             }
                         }
                         await planRegistration.Update(dbContext);
