@@ -226,12 +226,6 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                     .ToListAsync().ConfigureAwait(false);
 
-                if (registrationDevices.Any())
-                {
-                    timePlanning.StatusCaseId = await DeployResults(timePlanning, maxHistoryDays, infoeFormId, _sdkCore,
-                        site, folderId, messageText);
-                }
-
                 await timePlanning.Update(dbContext);
                 if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id))
                 {
@@ -261,12 +255,6 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                                     messageText = theMessage != null ? theMessage.EnName : "";
                                     break;
                             }
-
-                            if (planRegistration.Date <= DateTime.UtcNow)
-                            {
-                                planRegistration.StatusCaseId = await DeployResults(planRegistration,
-                                    maxHistoryDays, infoeFormId, _sdkCore, site, folderId, messageText);
-                            }
                         }
                         await planRegistration.Update(dbContext);
                         preSumFlexStart = planRegistration.SumFlexEnd;
@@ -281,67 +269,4 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
             Console.WriteLine(ex.StackTrace);
         }
     }
-
-    private async Task<int> DeployResults(PlanRegistration planRegistration, int maxHistoryDays, int eFormId, eFormCore.Core core, Site siteInfo, int folderId, string messageText)
-    {
-        if (planRegistration.StatusCaseId != 0)
-        {
-            await core.CaseDelete(planRegistration.StatusCaseId);
-        }
-        await using var sdkDbContext = core.DbContextHelper.GetDbContext();
-        var language = await sdkDbContext.Languages.FirstAsync(x => x.Id == siteInfo.LanguageId);
-        var folder = await sdkDbContext.Folders.FirstOrDefaultAsync(x => x.Id == folderId);
-        var mainElement = await core.ReadeForm(eFormId, language);
-        Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo(language.LanguageCode);
-        CultureInfo ci = new CultureInfo(language.LanguageCode);
-        mainElement.Label = planRegistration.Date.ToString("dddd dd. MMM yyyy", ci);
-        mainElement.EndDate = planRegistration.Date.AddDays(maxHistoryDays);
-        mainElement.StartDate = planRegistration.Date.AddDays(-1).ToUniversalTime();
-        DateTime startDate = new DateTime(2020, 1, 1);
-        mainElement.DisplayOrder = (startDate - planRegistration.Date).Days;
-        DataElement element = (DataElement)mainElement.ElementList.First();
-        element.Label = mainElement.Label;
-        element.DoneButtonEnabled = false;
-        CDataValue cDataValue = new CDataValue
-        {
-            InderValue = $"<strong>{Translations.NettoHours}: {planRegistration.NettoHours:0.00}</strong><br/>" +
-                         $"{messageText}"
-        };
-        element.Description = cDataValue;
-        DataItem dataItem = element.DataItemList.First();
-        dataItem.Color = Constants.FieldColors.Yellow;
-        dataItem.Label = $"<strong>{Translations.Date}: {planRegistration.Date.ToString("dddd dd. MMM yyyy", ci)}</strong>";
-        cDataValue = new CDataValue
-        {
-            InderValue = $"{Translations.PlanText}: {planRegistration.PlanText}<br/>"+
-                         $"{Translations.PlanHours}: {planRegistration.PlanHours}<br/><br/>" +
-                         $"{Translations.Shift_1__start}: {planRegistration.Options[planRegistration.Start1Id > 0 ? planRegistration.Start1Id - 1 : 0]}<br/>" +
-                         $"{Translations.Shift_1__pause}: {planRegistration.Options[planRegistration.Pause1Id > 0 ? planRegistration.Pause1Id - 1 : 0]}<br/>" +
-                         $"{Translations.Shift_1__end}: {planRegistration.Options[planRegistration.Stop1Id > 0 ? planRegistration.Stop1Id - 1 : 0]}<br/><br/>" +
-                         $"{Translations.Shift_2__start}: {planRegistration.Options[planRegistration.Start2Id > 0 ? planRegistration.Start2Id - 1 : 0]}<br/>" +
-                         $"{Translations.Shift_2__pause}: {planRegistration.Options[planRegistration.Pause2Id > 0 ? planRegistration.Pause2Id - 1 : 0]}<br/>" +
-                         $"{Translations.Shift_2__end}: {planRegistration.Options[planRegistration.Stop2Id > 0 ? planRegistration.Stop2Id - 1 : 0]}<br/><br/>" +
-                         $"<strong>{Translations.NettoHours}: {Math.Round(planRegistration.NettoHours, 2) :0.00}</strong><br/><br/>" +
-                         $"{Translations.Flex}: {Math.Round(planRegistration.Flex ,2):0.00}<br/>" +
-                         $"{Translations.SumFlexEnd}: {Math.Round(planRegistration.SumFlexEnd, 2):0.00}<br/>" +
-                         $"{Translations.PaidOutFlex}: {Math.Round(planRegistration.PaiedOutFlex, 2):0.00}<br/><br/>" +
-                         $"<strong>{Translations.Message}:</strong><br/>" +
-                         $"{messageText}<br/><br/>" +
-                         $"<strong>{Translations.Comments}:</strong><br/>" +
-                         $"{planRegistration.WorkerComment?.Replace("\n", "<br/>")}<br/><br/>" +
-                         $"<strong>{Translations.Comment_office}:</strong><br/>" +
-                         $"{planRegistration.CommentOffice?.Replace("\n", "<br/>")}<br/><br/>"// +
-            // $"<strong>{Translations.Comment_office_all}:</strong><br/>" +
-            // $"{planRegistration.CommentOffice}<br/>"
-        };
-        dataItem.Description = cDataValue;
-
-        if (folder != null) mainElement.CheckListFolderName = folder.MicrotingUid.ToString();
-
-        return (int)await core.CaseCreate(mainElement, "", (int)siteInfo.MicrotingUid, folderId);
-    }
-
-
-
-
 }
