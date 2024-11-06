@@ -238,29 +238,10 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     {
                         Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                         planRegistration.SumFlexStart = preSumFlexStart;
-                        //planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                        planRegistration.SumFlexEnd = timePlanning.SumFlexEnd + planRegistration.PlanHours -
-                                                      planRegistration.NettoHours -
+                        planRegistration.SumFlexEnd = timePlanning.SumFlexEnd + planRegistration.NettoHours -
+                                                      planRegistration.PlanHours -
                                                       planRegistration.PaiedOutFlex;
                         planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
-                        //planRegistration.SumFlexEnd = planRegistration.Flex + preSumFlexStart - planRegistration.PaiedOutFlex;
-                        // if (planRegistration.DataFromDevice)
-                        // {
-                        //     theMessage =
-                        //         await dbContext.Messages.FirstOrDefaultAsync(x => x.Id == planRegistration.MessageId);
-                        //     switch (language.LanguageCode)
-                        //     {
-                        //         case "da":
-                        //             messageText = theMessage != null ? theMessage.DaName : "";
-                        //             break;
-                        //         case "de":
-                        //             messageText = theMessage != null ? theMessage.DeName : "";
-                        //             break;
-                        //         default:
-                        //             messageText = theMessage != null ? theMessage.EnName : "";
-                        //             break;
-                        //     }
-                        // }
                         await planRegistration.Update(dbContext);
                         preSumFlexStart = planRegistration.SumFlexEnd;
                     }
