@@ -21,7 +21,8 @@ public class SearchListJob(DbContextHelper dbContextHelper) : IJob
             Parallel.ForEach(siteIds, siteId =>
             {
                 double preSumFlexStart = 0;
-                var planRegistrationsForSite = dbContext.PlanRegistrations
+                var innerDbContext = dbContextHelper.GetDbContext();
+                var planRegistrationsForSite = innerDbContext.PlanRegistrations
                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                     .Where(x => x.SdkSitId == siteId)
                     .OrderBy(x => x.Date)
@@ -29,17 +30,26 @@ public class SearchListJob(DbContextHelper dbContextHelper) : IJob
 
                 foreach (var planRegistration in planRegistrationsForSite)
                 {
+                    var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
+                        .First(x => x.Id == planRegistration.Id);
                     planRegistration.SumFlexStart = preSumFlexStart;
                     planRegistration.SumFlexEnd = preSumFlexStart + planRegistration.NettoHours -
                                                   planRegistration.PlanHours -
                                                   planRegistration.PaiedOutFlex;
                     planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
-                    var entry = dbContext.Entry(planRegistration);
-                    if (entry.State == EntityState.Modified)
-                    {
-                        SentrySdk.CaptureMessage($"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
-                    }
+                    Console.WriteLine($@"Checking planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
 
+                    if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd || originalPlanRegistration.Flex != planRegistration.Flex)
+                    {
+                        SentrySdk.CaptureMessage($"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                                 $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
+                                                 $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}", SentryLevel.Error);
+                        planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        Console.WriteLine($@"PlanRegistration has not changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
+                    }
                     preSumFlexStart = planRegistration.SumFlexEnd;
                 }
             });
