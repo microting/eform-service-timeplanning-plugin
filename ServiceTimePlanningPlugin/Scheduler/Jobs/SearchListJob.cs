@@ -5,15 +5,17 @@ using Microsoft.EntityFrameworkCore;
 using Microting.eForm.Infrastructure.Constants;
 using Microting.TimePlanningBase.Infrastructure.Data;
 using Sentry;
+using ServiceTimePlanningPlugin.Infrastructure.Helpers;
 
 namespace ServiceTimePlanningPlugin.Scheduler.Jobs;
 
-public class SearchListJob(TimePlanningPnDbContext dbContext) : IJob
+public class SearchListJob(DbContextHelper dbContextHelper) : IJob
 {
     public async Task Execute()
     {
         if (DateTime.UtcNow.Hour == 18)
         {
+            var dbContext = dbContextHelper.GetDbContext();
             var siteIds = await dbContext.AssignedSites.Select(x => x.SiteId).ToListAsync();
 
             Parallel.ForEach(siteIds, siteId =>
