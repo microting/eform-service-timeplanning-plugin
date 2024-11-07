@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using Sentry;
+using ServiceTimePlanningPlugin.Scheduler.Jobs;
 
 namespace ServiceTimePlanningPlugin;
 
@@ -33,6 +34,7 @@ public class Core : ISdkEventHandler
     private static int _maxParallelism = 1;
     private static int _numberOfWorkers = 1;
     private TimePlanningPnDbContext _dbContext;
+    private Timer _scheduleTimer;
     private DbContextHelper _dbContextHelper;
 
     public void CoreEventException(object sender, EventArgs args)
@@ -161,8 +163,11 @@ public class Core : ISdkEventHandler
                     new RebusHandlerInstaller()
                     , new RebusInstaller(dbPrefix, connectionString, _maxParallelism, _numberOfWorkers, rabbitMqUser, rabbitMqPassword, rabbitmqHost)
                 );
+                _container.Register(Component.For<SearchListJob>());
 
                 _bus = _container.Resolve<IBus>();
+
+                ConfigureScheduler();
             }
             Console.WriteLine("ServiceTimePlanningPlugin started");
 
@@ -207,6 +212,18 @@ public class Core : ISdkEventHandler
         _sdkCore = new eFormCore.Core();
 
         _sdkCore.StartSqlOnly(sdkConnectionString).GetAwaiter().GetResult();
+    }
+
+    private void ConfigureScheduler()
+    {
+        var job = _container.Resolve<SearchListJob>();
+
+        async void Callback(object x)
+        {
+            await job.Execute();
+        }
+
+        _scheduleTimer = new Timer(Callback, null, TimeSpan.Zero, TimeSpan.FromMinutes(60));
     }
 
     private async Task CheckRegistrationIntegrity()

@@ -238,7 +238,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     {
                         Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
                         planRegistration.SumFlexStart = preSumFlexStart;
-                        planRegistration.SumFlexEnd = timePlanning.SumFlexEnd + planRegistration.NettoHours -
+                        planRegistration.SumFlexEnd = preSumFlexStart + planRegistration.NettoHours -
                                                       planRegistration.PlanHours -
                                                       planRegistration.PaiedOutFlex;
                         planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
