@@ -13,7 +13,7 @@ public class SearchListJob(DbContextHelper dbContextHelper) : IJob
 {
     public async Task Execute()
     {
-        if (DateTime.UtcNow.Hour == 18)
+        if (DateTime.UtcNow.Hour == 19)
         {
             var dbContext = dbContextHelper.GetDbContext();
             var siteIds = await dbContext.AssignedSites.Select(x => x.SiteId).ToListAsync();
