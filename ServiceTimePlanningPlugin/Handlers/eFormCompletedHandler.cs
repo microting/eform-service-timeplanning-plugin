@@ -133,7 +133,6 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 var timePlanning = await dbContext.PlanRegistrations
                     .Where(x => x.SdkSitId == site.MicrotingUid
                                 && x.Date == dateValue)
-                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                     .FirstOrDefaultAsync();
 
 
@@ -173,6 +172,10 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         }
                         timePlanning.WorkerComment += fieldValues.First(x => x.FieldId == commentField.Id).Value;
                         timePlanning.DataFromDevice = true;
+                        if (timePlanning.WorkflowState == Constants.WorkflowStates.Removed)
+                        {
+                            timePlanning.WorkflowState = Constants.WorkflowStates.Created;
+                        }
 
                         await timePlanning.Update(dbContext);
                     }
@@ -227,7 +230,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     .ToListAsync().ConfigureAwait(false);
 
                 await timePlanning.Update(dbContext);
-                if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id))
+                if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id && x.WorkflowState != Constants.WorkflowStates.Removed))
                 {
                     double preSumFlexStart = timePlanning.SumFlexEnd;
                     var list = await dbContext.PlanRegistrations
