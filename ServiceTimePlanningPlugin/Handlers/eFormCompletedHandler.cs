@@ -29,6 +29,7 @@ using Microting.eForm.Dto;
 using Microting.eForm.Infrastructure.Constants;
 using Microting.eForm.Infrastructure.Data.Entities;
 using Microting.eForm.Infrastructure.Models;
+using Sentry;
 using ServiceTimePlanningPlugin.Resources;
 
 namespace ServiceTimePlanningPlugin.Handlers;
@@ -254,6 +255,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
         }
         catch (Exception ex)
         {
+            SentrySdk.CaptureException(ex);
             Console.WriteLine(ex.Message);
             Console.WriteLine(ex.StackTrace);
         }
