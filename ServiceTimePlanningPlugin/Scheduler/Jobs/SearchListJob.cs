@@ -20,7 +20,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 {
     public async Task Execute()
     {
-        if (DateTime.UtcNow.Hour == 10)
+        if (DateTime.UtcNow.Hour == 11)
         {
             var dbContext = dbContextHelper.GetDbContext();
             var sdkContext = _sdkCore.DbContextHelper.GetDbContext();
@@ -63,7 +63,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             });
 
             // Define request parameters.
-            String range = "Sheet1!A1:ZZZ1000"; // Adjust the range as needed
+            // Get the sheet metadata to determine the range
+            var sheetMetadataRequest = service.Spreadsheets.Get(googleSheetId.Value);
+            var sheetMetadata = await sheetMetadataRequest.ExecuteAsync();
+            var sheet = sheetMetadata.Sheets.First();
+            var rowCount = sheet.Properties.GridProperties.RowCount;
+            var columnCount = sheet.Properties.GridProperties.ColumnCount;
+
+            // Define request parameters with the determined range
+            String range = $"Sheet1!A1:{GetColumnName((int)columnCount!)}{rowCount}";
             SpreadsheetsResource.ValuesResource.GetRequest request =
                 service.Spreadsheets.Values.Get(googleSheetId.Value, range);
 
@@ -285,5 +293,22 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                 }
             });
         }
+
+
+    }
+
+
+// Helper method to convert column index to column name
+    private string GetColumnName(int index)
+    {
+        const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        string columnName = string.Empty;
+        while (index > 0)
+        {
+            index--;
+            columnName = letters[index % 26] + columnName;
+            index /= 26;
+        }
+        return columnName;
     }
 }
