@@ -20,7 +20,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 {
     public async Task Execute()
     {
-        if (DateTime.UtcNow.Hour == 11)
+        if (DateTime.UtcNow.Hour == 15)
         {
             var dbContext = dbContextHelper.GetDbContext();
             var sdkContext = _sdkCore.DbContextHelper.GetDbContext();
@@ -71,18 +71,18 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             var columnCount = sheet.Properties.GridProperties.ColumnCount;
 
             // Define request parameters with the determined range
-            String range = $"Sheet1!A1:{GetColumnName((int)columnCount!)}{rowCount}";
-            SpreadsheetsResource.ValuesResource.GetRequest request =
+            var range = $"PlanTimer!A1:{GetColumnName((int)columnCount!)}{rowCount}";
+            var request =
                 service.Spreadsheets.Values.Get(googleSheetId.Value, range);
 
             // Fetch the data from the sheet
-            ValueRange response = await request.ExecuteAsync();
-            IList<IList<Object>> values = response.Values;
+            var response = await request.ExecuteAsync();
+            var values = response.Values;
 
-            if (values != null && values.Count > 0)
+            if (values is { Count: > 0 })
             {
                 // Skip the header row (first row)
-                for (int i = 1; i < values.Count; i++)
+                for (var i = 1; i < values.Count; i++)
                 {
                     var row = values[i];
                     // Process each row
