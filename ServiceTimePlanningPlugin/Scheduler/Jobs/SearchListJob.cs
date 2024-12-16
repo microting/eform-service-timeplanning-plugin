@@ -63,7 +63,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             });
 
             // Define request parameters.
-            String range = "Sheet1!A1:Z"; // Adjust the range as needed
+            String range = "Sheet1!A1:ZZZ1000"; // Adjust the range as needed
             SpreadsheetsResource.ValuesResource.GetRequest request =
                 service.Spreadsheets.Values.Get(googleSheetId.Value, range);
 
