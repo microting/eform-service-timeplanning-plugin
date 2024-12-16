@@ -20,7 +20,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 {
     public async Task Execute()
     {
-        if (DateTime.UtcNow.Hour == 15)
+        if (DateTime.UtcNow.Hour == 19)
         {
             var dbContext = dbContextHelper.GetDbContext();
             var sdkContext = _sdkCore.DbContextHelper.GetDbContext();
@@ -39,18 +39,18 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             var clientId = Environment.GetEnvironmentVariable("CLIENT_ID");
 
             string serviceAccountJson = $@"
-    {{
-      ""type"": ""service_account"",
-      ""project_id"": ""{projectId}"",
-      ""private_key_id"": ""{privateKeyId}"",
-      ""private_key"": ""{privateKey}"",
-      ""client_email"": ""{clientEmail}"",
-      ""client_id"": ""{clientId}"",
-      ""auth_uri"": ""https://accounts.google.com/o/oauth2/auth"",
-      ""token_uri"": ""https://oauth2.googleapis.com/token"",
-      ""auth_provider_x509_cert_url"": ""https://www.googleapis.com/oauth2/v1/certs"",
-      ""client_x509_cert_url"": ""https://www.googleapis.com/robot/v1/metadata/x509/{clientEmail}""
-    }}";
+            {{
+              ""type"": ""service_account"",
+              ""project_id"": ""{projectId}"",
+              ""private_key_id"": ""{privateKeyId}"",
+              ""private_key"": ""{privateKey}"",
+              ""client_email"": ""{clientEmail}"",
+              ""client_id"": ""{clientId}"",
+              ""auth_uri"": ""https://accounts.google.com/o/oauth2/auth"",
+              ""token_uri"": ""https://oauth2.googleapis.com/token"",
+              ""auth_provider_x509_cert_url"": ""https://www.googleapis.com/oauth2/v1/certs"",
+              ""client_x509_cert_url"": ""https://www.googleapis.com/robot/v1/metadata/x509/{clientEmail}""
+            }}";
 
             // Authenticate using the dynamically constructed JSON
             var credential = GoogleCredential.FromJson(serviceAccountJson)
@@ -64,14 +64,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 
             // Define request parameters.
             // Get the sheet metadata to determine the range
-            var sheetMetadataRequest = service.Spreadsheets.Get(googleSheetId.Value);
-            var sheetMetadata = await sheetMetadataRequest.ExecuteAsync();
-            var sheet = sheetMetadata.Sheets.First();
-            var rowCount = sheet.Properties.GridProperties.RowCount;
-            var columnCount = sheet.Properties.GridProperties.ColumnCount;
 
             // Define request parameters with the determined range
-            var range = $"PlanTimer!A1:{GetColumnName((int)columnCount!)}{rowCount}";
+            var range = $"PlanTimer";
             var request =
                 service.Spreadsheets.Values.Get(googleSheetId.Value, range);
 
@@ -79,6 +74,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             var response = await request.ExecuteAsync();
             var values = response.Values;
 
+            var headerRows = values?.FirstOrDefault();
             if (values is { Count: > 0 })
             {
                 // Skip the header row (first row)
@@ -98,6 +94,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                     }
 
                     var dateValue = DateTime.ParseExact(date, "dd.MM.yyyy", CultureInfo.InvariantCulture);
+                    Console.WriteLine($"Processing date: {dateValue}");
                     if (dateValue < DateTime.Now.AddDays(-1))
                     {
                         continue;
@@ -111,9 +108,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                     // Iterate over each pair of columns starting from the fourth column
                     for (int j = 3; j < row.Count; j += 2)
                     {
-                        string siteName = row[j].ToString().Split('-')[0].Trim();
-                        var site = await sdkContext.Sites.FirstOrDefaultAsync(x =>
-                            x.Name.Replace(" ", "").ToLower() == siteName.Replace(" ", "").ToLower());
+                        string siteName = headerRows[j].ToString().Split('-')[0].Trim();
+                        var site = await sdkContext.Sites
+                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                            .FirstOrDefaultAsync(x =>
+                                x.Name.Replace(" ", "").ToLower() == siteName.Replace(" ", "").ToLower());
                         if (site == null)
                         {
                             continue;
@@ -142,14 +141,16 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                             .OrderByDescending(x => x.Date)
                             .FirstOrDefaultAsync();
 
+                        var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
+
                         var planRegistration = await dbContext.PlanRegistrations.SingleOrDefaultAsync(x =>
-                            x.Date == dateValue && x.SdkSitId == site.MicrotingUid);
+                            x.Date == midnight && x.SdkSitId == site.MicrotingUid);
 
                         if (planRegistration == null)
                         {
                             planRegistration = new PlanRegistration
                             {
-                                Date = dateValue,
+                                Date = midnight,
                                 PlanText = planText,
                                 PlanHours = parsedPlanHours,
                                 SdkSitId = (int)site.MicrotingUid!,
@@ -191,6 +192,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                                 Console.WriteLine(
                                     $"PlanText for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanText} to {planText}");
                             }
+
                             planRegistration.PlanText = planText;
                             // print to console if the current PlanHours is different from the one in the database
                             if (planRegistration.PlanHours != parsedPlanHours)
@@ -198,6 +200,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                                 Console.WriteLine(
                                     $"PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
                             }
+
                             planRegistration.PlanHours = parsedPlanHours;
                             planRegistration.UpdatedByUserId = 1;
 
