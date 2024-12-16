@@ -177,7 +177,19 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                         }
                         else
                         {
+                            // print to console if the current PlanText is different from the one in the database
+                            if (planRegistration.PlanText != planText)
+                            {
+                                Console.WriteLine(
+                                    $"PlanText for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanText} to {planText}");
+                            }
                             planRegistration.PlanText = planText;
+                            // print to console if the current PlanHours is different from the one in the database
+                            if (planRegistration.PlanHours != parsedPlanHours)
+                            {
+                                Console.WriteLine(
+                                    $"PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
+                            }
                             planRegistration.PlanHours = parsedPlanHours;
                             planRegistration.UpdatedByUserId = 1;
 
