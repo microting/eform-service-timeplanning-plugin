@@ -20,7 +20,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 {
     public async Task Execute()
     {
-        if (DateTime.UtcNow.Hour == 19)
+        if (DateTime.UtcNow.Hour == 10)
         {
             var dbContext = dbContextHelper.GetDbContext();
             var sdkContext = _sdkCore.DbContextHelper.GetDbContext();
