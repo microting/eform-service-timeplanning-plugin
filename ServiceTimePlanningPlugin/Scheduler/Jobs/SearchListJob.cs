@@ -32,6 +32,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
 
             var googleSheetId = await dbContext.PluginConfigurationValues
                 .SingleAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
+
+            if (string.IsNullOrEmpty(googleSheetId.Value))
+            {
+                return;
+            }
             var applicationName = "Google Sheets API Integration";
             var privateKey = Environment.GetEnvironmentVariable("PRIVATE_KEY");
             var clientEmail = Environment.GetEnvironmentVariable("CLIENT_EMAIL");
