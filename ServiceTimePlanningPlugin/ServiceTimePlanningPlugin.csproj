@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3568" />
+    <PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3624" />
     <PackageReference Include="Microsoft.Extensions.DependencyModel" Version="8.0.2" />
     <PackageReference Include="Microting.eForm" Version="9.0.1" />
     <PackageReference Include="Microting.eFormApi.BasePn" Version="9.0.1" />
