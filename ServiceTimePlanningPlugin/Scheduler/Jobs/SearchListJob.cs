@@ -113,7 +113,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                         // Iterate over each pair of columns starting from the fourth column
                         for (int j = 3; j < row.Count; j += 2)
                         {
-                            string siteName = headerRows[j].ToString().Split('-')[0].Trim();
+                            string siteName = headerRows[j].ToString().Split('-').Last().Trim();
                             var site = await sdkContext.Sites
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                 .FirstOrDefaultAsync(x =>
