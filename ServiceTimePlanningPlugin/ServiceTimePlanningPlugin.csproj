@@ -16,7 +16,7 @@
     <PackageReference Include="Microting.eFormApi.BasePn" Version="9.0.14" />
     <PackageReference Include="Microting.TimePlanningBase" Version="9.0.4" />
     <PackageReference Include="Microting.WindowsService.BasePn" Version="2.0.0" />
-    <PackageReference Include="Sentry" Version="5.1.0" />
+    <PackageReference Include="Sentry" Version="5.1.1" />
     <PackageReference Include="System.ComponentModel.Composition" Version="9.0.1" />
   </ItemGroup>
 
