@@ -13,7 +13,7 @@
     <PackageReference Include="Google.Apis.Sheets.v4" Version="1.69.0.3694" />
     <PackageReference Include="Microsoft.Extensions.DependencyModel" Version="9.0.2" />
     <PackageReference Include="Microting.eForm" Version="9.0.20" />
-    <PackageReference Include="Microting.eFormApi.BasePn" Version="9.0.19" />
+    <PackageReference Include="Microting.eFormApi.BasePn" Version="9.0.20" />
     <PackageReference Include="Microting.TimePlanningBase" Version="9.0.17" />
     <PackageReference Include="Microting.WindowsService.BasePn" Version="2.0.0" />
     <PackageReference Include="Sentry" Version="5.2.0" />
