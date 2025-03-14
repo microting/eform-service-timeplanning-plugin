@@ -186,8 +186,11 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
 
                 double nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
                 nettoMinutes -= timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0;
-                nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
-                nettoMinutes -= timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0;
+                if (timePlanning.Stop2Id != 0)
+                {
+                    nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
+                    nettoMinutes -= timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0;
+                }
 
                 nettoMinutes *= minutesMultiplier;
 
