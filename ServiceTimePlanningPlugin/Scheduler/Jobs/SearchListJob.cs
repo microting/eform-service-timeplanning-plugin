@@ -124,6 +124,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                                 continue;
                             }
 
+                            var assignedSite = await dbContext.AssignedSites
+                                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                                .FirstOrDefaultAsync(x => x.SiteId == site.MicrotingUid);
+
+                            if (!assignedSite.UseGoogleSheetAsDefault)
+                            {
+                                continue;
+                            }
+
                             var planHours = row.Count > j ? row[j].ToString() : string.Empty;
                             var planText = row.Count > j + 1 ? row[j + 1].ToString() : string.Empty;
 
