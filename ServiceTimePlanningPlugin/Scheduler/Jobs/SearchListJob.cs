@@ -216,7 +216,10 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                                         $"PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
                                 }
 
-                                planRegistration.PlanHours = parsedPlanHours;
+                                if (!planRegistration.PlanChangedByAdmin)
+                                {
+                                    planRegistration.PlanHours = parsedPlanHours;
+                                }
                                 planRegistration.UpdatedByUserId = 1;
 
                                 if (preTimePlanning != null)
