@@ -159,7 +159,8 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                             var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
 
                             var planRegistration = await dbContext.PlanRegistrations.SingleOrDefaultAsync(x =>
-                                x.Date == midnight && x.SdkSitId == site.MicrotingUid);
+                                x.Date == midnight && x.SdkSitId == site.MicrotingUid &&
+                                x.WorkflowState != Constants.WorkflowStates.Removed);
 
                             if (planRegistration == null)
                             {

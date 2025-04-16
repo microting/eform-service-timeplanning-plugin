@@ -101,7 +101,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
             var shift2StartField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373293" && x.WorkflowState != Constants.WorkflowStates.Removed);
             var shift2PauseField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373294" && x.WorkflowState != Constants.WorkflowStates.Removed);
             var shift2StopField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373295" && x.WorkflowState != Constants.WorkflowStates.Removed);
-            var commentField = await sdkDbContext.Fields.FirstAsync(x => x.OriginalId == "373288" && x.WorkflowState != Constants.WorkflowStates.Removed);
+            var commentField = await sdkDbContext.Fields.FirstOrDefaultAsync(x => x.OriginalId == "373288" && x.WorkflowState != Constants.WorkflowStates.Removed);
 
             if (cls != null && cls.CheckListId == eformId)
             {
@@ -149,7 +149,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         Start2Id = shift2Start,
                         Stop1Id = shift1Stop,
                         Stop2Id = shift2Stop,
-                        WorkerComment = fieldValues.First(x => x.FieldId == commentField.Id).Value,
+                        WorkerComment = commentField != null ? fieldValues.First(x => x.FieldId == commentField.Id).Value : "",
                         DataFromDevice = true
                     };
 
@@ -171,7 +171,10 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                         {
                             timePlanning.WorkerComment += "<br/>";
                         }
-                        timePlanning.WorkerComment += fieldValues.First(x => x.FieldId == commentField.Id).Value;
+                        if (commentField != null)
+                        {
+                            timePlanning.WorkerComment += fieldValues.First(x => x.FieldId == commentField.Id).Value;
+                        }
                         timePlanning.DataFromDevice = true;
                         if (timePlanning.WorkflowState == Constants.WorkflowStates.Removed)
                         {
