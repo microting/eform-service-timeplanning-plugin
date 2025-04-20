@@ -30,7 +30,12 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                 }
 
                 var googleSheetId = await dbContext.PluginConfigurationValues
-                    .SingleAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
+                    .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
+
+                if (googleSheetId == null)
+                {
+                    return;
+                }
 
                 if (string.IsNullOrEmpty(googleSheetId.Value))
                 {
@@ -127,6 +132,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                             var assignedSite = await dbContext.AssignedSites
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                 .FirstOrDefaultAsync(x => x.SiteId == site.MicrotingUid);
+
+                            if (assignedSite == null)
+                            {
+                                continue;
+                            }
 
                             if (!assignedSite.UseGoogleSheetAsDefault)
                             {
