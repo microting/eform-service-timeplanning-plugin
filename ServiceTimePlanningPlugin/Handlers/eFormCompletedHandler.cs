@@ -113,6 +113,13 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 }
                 var fieldValues = await _sdkCore.Advanced_FieldValueReadList(new() { cls.Id }, language);
 
+                if (string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == dateField.Id).Value))
+                {
+                    SentrySdk.CaptureMessage($"The date field is empty for site {site.MicrotingUid} and caseId {cls.MicrotingCheckUid}");
+                    Console.WriteLine("The date field is empty");
+                    return;
+                }
+
                 var dateValue = DateTime.Parse(fieldValues.First(x => x.FieldId == dateField.Id).Value);
                 if (dateValue < DateTime.UtcNow.AddDays(-maxHistoryDays))
                 {
