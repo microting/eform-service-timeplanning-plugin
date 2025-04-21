@@ -13,7 +13,7 @@ using ServiceTimePlanningPlugin.Infrastructure.Helpers;
 
 namespace ServiceTimePlanningPlugin.Scheduler.Jobs;
 
-public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkCore) : IJob
+public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCore) : IJob
 {
     public async Task Execute()
     {
@@ -22,7 +22,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
             try
             {
                 var dbContext = dbContextHelper.GetDbContext();
-                var sdkContext = _sdkCore.DbContextHelper.GetDbContext();
+                var sdkContext = sdkCore.DbContextHelper.GetDbContext();
                 var privateKeyId = Environment.GetEnvironmentVariable("PRIVATE_KEY_ID");
                 if (string.IsNullOrEmpty(privateKeyId))
                 {
@@ -92,7 +92,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                     {
                         var row = values[i];
                         // Process each row
-                        string date = row[0].ToString();
+                        var date = row[0].ToString();
 
                         // Process the dato as date
 
@@ -118,7 +118,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                         // Iterate over each pair of columns starting from the fourth column
                         for (int j = 3; j < row.Count; j += 2)
                         {
-                            string siteName = headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
+                            var siteName = headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
                             Console.WriteLine($"Processing site: {siteName}");
                             var site = await sdkContext.Sites
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
@@ -157,7 +157,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                                 planHours = planHours.Replace(",", ".");
                             }
 
-                            double parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
+                            var parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
                                 NumberFormatInfo.InvariantInfo);
 
                             var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
@@ -276,10 +276,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                 .Select(x => x.SiteId)
                 .ToListAsync();
+            var tomorrow = DateTime.UtcNow.AddDays(1);
+            var midnight = new DateTime(tomorrow.Year, tomorrow.Month, tomorrow.Day, 0, 0, 0);
 
             Parallel.ForEach(siteIds, siteId =>
             {
-                double preSumFlexStart = 0;
                 var innerDbContext = dbContextHelper.GetDbContext();
                 var planRegistrationsForSite = innerDbContext.PlanRegistrations
                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
@@ -299,12 +300,28 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                     }
                     else
                     {
+                        if (planRegistration.Date > midnight)
+                        {
+                            continue;
+                        }
                         var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
                             .First(x => x.Id == planRegistration.Id);
-                        planRegistration.SumFlexStart = preSumFlexStart;
-                        planRegistration.SumFlexEnd = preSumFlexStart + planRegistration.NettoHours -
-                                                      planRegistration.PlanHours -
-                                                      planRegistration.PaiedOutFlex;
+                        var preTimePlanning =
+                            dbContext.PlanRegistrations.AsNoTracking()
+                                .Where(x => x.Date < planRegistration.Date && x.SdkSitId == siteId)
+                                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                                .OrderByDescending(x => x.Date).FirstOrDefault();
+                        if (preTimePlanning != null)
+                        {
+                            planRegistration.SumFlexEnd = preTimePlanning.SumFlexEnd + planRegistration.Flex - planRegistration.PaiedOutFlex;
+                            planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
+                        }
+                        else
+                        {
+                            planRegistration.SumFlexEnd = planRegistration.Flex - planRegistration.PaiedOutFlex;
+                            planRegistration.SumFlexStart = 0;
+                        }
+
                         planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
 
                         if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
@@ -326,28 +343,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core _sdkC
                             Console.WriteLine(
                                 $@"PlanRegistration has not changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
                         }
-
-                        preSumFlexStart = planRegistration.SumFlexEnd;
                     }
                 }
             });
         }
 
 
-    }
-
-
-// Helper method to convert column index to column name
-    private string GetColumnName(int index)
-    {
-        const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        string columnName = string.Empty;
-        while (index > 0)
-        {
-            index--;
-            columnName = letters[index % 26] + columnName;
-            index /= 26;
-        }
-        return columnName;
     }
 }
