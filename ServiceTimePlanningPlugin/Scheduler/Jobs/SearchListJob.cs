@@ -307,7 +307,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                         var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
                             .First(x => x.Id == planRegistration.Id);
                         var preTimePlanning =
-                            dbContext.PlanRegistrations.AsNoTracking()
+                            innerDbContext.PlanRegistrations.AsNoTracking()
                                 .Where(x => x.Date < planRegistration.Date && x.SdkSitId == siteId)
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                 .OrderByDescending(x => x.Date).FirstOrDefault();
