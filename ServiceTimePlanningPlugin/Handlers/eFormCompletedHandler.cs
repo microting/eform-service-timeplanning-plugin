@@ -138,9 +138,11 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 var shift2Pause = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift2PauseField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift2PauseField.Id).Value);
                 var shift2Stop = string.IsNullOrEmpty(fieldValues.First(x => x.FieldId == shift2StopField.Id).Value) ? 0 : int.Parse(fieldValues.First(x => x.FieldId == shift2StopField.Id).Value);
 
+                var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
+
                 var timePlanning = await dbContext.PlanRegistrations
                     .Where(x => x.SdkSitId == site.MicrotingUid
-                                && x.Date == dateValue)
+                                && x.Date == midnight)
                     .FirstOrDefaultAsync();
 
 
@@ -149,7 +151,7 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     timePlanning = new PlanRegistration
                     {
                         SdkSitId = (int)site.MicrotingUid!,
-                        Date = dateValue,
+                        Date = midnight,
                         Pause1Id = shift1Pause,
                         Pause2Id = shift2Pause,
                         Start1Id = shift1Start,
