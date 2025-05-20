@@ -1,8 +1,10 @@
 version: 2
 updates:
 - package-ecosystem: nuget
-  directory: "/"
+  directory: "/ServiceTimePlanningPlugin"
   schedule:
     interval: daily
-    time: "04:00"
-  open-pull-requests-limit: 10
+- package-ecosystem: nuget
+  directory: "/ServiceTimePlanningPlugin.Integration.Test"
+  schedule:
+    interval: daily
