@@ -7,7 +7,7 @@ if (( "$GIT_STATUS" > 0 )); then
 	cd ServiceTimePlanningPlugin
   CURRENT_NUMBER_OF_COMMITS=`git log --oneline | wc -l`
 
-	PACKAGES=('Microting.eForm' 'Microting.eFormApi.BasePn' 'Microting.TimePlanningBase')
+	PACKAGES=('Microting.eForm' 'Microting.eFormApi.BasePn' 'Microting.TimePlanningBase' ' Sentry')
 	PROJECT_NAME='ServiceTimePlanningPlugin.csproj'
 	REPOSITORY='eform-service-timeplanning-plugin'
 
