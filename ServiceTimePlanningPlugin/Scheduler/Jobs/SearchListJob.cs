@@ -32,12 +32,25 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 var googleSheetId = await dbContext.PluginConfigurationValues
                     .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
 
+                var dayOfPayment = await dbContext.PluginConfigurationValues
+                    .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:DayOfPayment");
+
                 if (googleSheetId == null)
                 {
                     return;
                 }
 
+                if (dayOfPayment == null)
+                {
+                    return;
+                }
+
                 if (string.IsNullOrEmpty(googleSheetId.Value))
+                {
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(dayOfPayment.Value))
                 {
                     return;
                 }
@@ -85,7 +98,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 var values = response.Values;
 
                 var headerRows = values?.FirstOrDefault();
-                if (values is {Count: > 0})
+                if (values is { Count: > 0 })
                 {
                     // Skip the header row (first row)
                     for (var i = 1; i < values.Count; i++)
@@ -118,7 +131,8 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                         // Iterate over each pair of columns starting from the fourth column
                         for (int j = 3; j < row.Count; j += 2)
                         {
-                            var siteName = headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
+                            var siteName = headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "")
+                                .Trim();
                             Console.WriteLine($"Processing site: {siteName}");
                             var site = await sdkContext.Sites
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
@@ -162,7 +176,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                             var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                .Where(x => x.Date < dateValue && x.SdkSitId == (int) site.MicrotingUid!)
+                                .Where(x => x.Date < dateValue && x.SdkSitId == (int)site.MicrotingUid!)
                                 .OrderByDescending(x => x.Date)
                                 .FirstOrDefaultAsync();
 
@@ -179,7 +193,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     Date = midnight,
                                     PlanText = planText,
                                     PlanHours = parsedPlanHours,
-                                    SdkSitId = (int) site.MicrotingUid!,
+                                    SdkSitId = (int)site.MicrotingUid!,
                                     CreatedByUserId = 1,
                                     UpdatedByUserId = 1,
                                     NettoHours = 0,
@@ -231,6 +245,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 {
                                     planRegistration.PlanHours = parsedPlanHours;
                                 }
+
                                 planRegistration.UpdatedByUserId = 1;
 
                                 if (preTimePlanning != null)
@@ -253,6 +268,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                                 await planRegistration.Update(dbContext);
                             }
+
+                            await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext,
+                                assignedSite, int.Parse(dayOfPayment.Value));
                         }
                     }
                 }
@@ -276,20 +294,31 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                 .Select(x => x.SiteId)
                 .ToListAsync();
-            var tomorrow = DateTime.UtcNow.AddDays(1);
-            var midnight = new DateTime(tomorrow.Year, tomorrow.Month, tomorrow.Day, 0, 0, 0);
+
+            var settingsDayOfPayment = int.Parse(dbContext.PluginConfigurationValues
+                .First(x => x.Name == "TimePlanningBaseSettings:DayOfPayment").Value);
+            var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
+            var dayOfPayment = toDay.Day >= settingsDayOfPayment
+                ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
+                : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
 
             Parallel.ForEach(siteIds, siteId =>
             {
                 var innerDbContext = dbContextHelper.GetDbContext();
-                var planRegistrationsForSite = innerDbContext.PlanRegistrations
+
+                var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                     .Where(x => x.SdkSitId == siteId)
+                    .Where(x => x.Date > dayOfPayment)
                     .OrderBy(x => x.Date)
+                    .Select(x => x.Id)
                     .ToList();
 
-                foreach (var planRegistration in planRegistrationsForSite)
+                foreach (var planRegistrationId in planRegistrationIdsForSite)
                 {
+                    var planRegistration = innerDbContext.PlanRegistrations
+                        .AsTracking()
+                        .First(x => x.Id == planRegistrationId);
                     Console.WriteLine(
                         $@"Checking planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
                     if (planRegistration.Date > DateTime.Now.AddMonths(6))
@@ -300,29 +329,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     }
                     else
                     {
-                        if (planRegistration.Date > midnight)
-                        {
-                            continue;
-                        }
                         var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
                             .First(x => x.Id == planRegistration.Id);
-                        var preTimePlanning =
-                            innerDbContext.PlanRegistrations.AsNoTracking()
-                                .Where(x => x.Date < planRegistration.Date && x.SdkSitId == siteId)
-                                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                .OrderByDescending(x => x.Date).FirstOrDefault();
-                        if (preTimePlanning != null)
-                        {
-                            planRegistration.SumFlexEnd = preTimePlanning.SumFlexEnd + planRegistration.Flex - planRegistration.PaiedOutFlex;
-                            planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                        }
-                        else
-                        {
-                            planRegistration.SumFlexEnd = planRegistration.Flex - planRegistration.PaiedOutFlex;
-                            planRegistration.SumFlexStart = 0;
-                        }
 
-                        planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
+                        var assignedSite = dbContext.AssignedSites
+                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                            .FirstOrDefault(x => x.SiteId == siteId);
+                        planRegistration = PlanRegistrationHelper
+                            .UpdatePlanRegistration(planRegistration, dbContext, assignedSite, settingsDayOfPayment)
+                            .GetAwaiter().GetResult();
 
                         if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
                             originalPlanRegistration.Flex != planRegistration.Flex)
@@ -347,7 +362,5 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 }
             });
         }
-
-
     }
 }
