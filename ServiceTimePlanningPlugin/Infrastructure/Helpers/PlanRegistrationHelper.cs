@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.JavaScript;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +22,7 @@ public static class PlanRegistrationHelper
         PlanRegistration planRegistration,
         TimePlanningPnDbContext dbContext,
         AssignedSite dbAssignedSite,
-        int settingsDayOfPayment
+        DateTime dayOfPayment
         )
     {
         var tainted = false;
@@ -30,10 +31,10 @@ public static class PlanRegistrationHelper
             // var planRegistration = await dbContext.PlanRegistrations.AsTracking().FirstAsync(x => x.Id == planRegistrationId);
             // var midnight = new DateTime(planRegistration.Date.Year, planRegistration.Date.Month,
             //     planRegistration.Date.Day, 0, 0, 0);
-            var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
-            var dayOfPayment = toDay.Day >= settingsDayOfPayment
-                ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
-                : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
+            // var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
+            // var dayOfPayment = toDay.Day >= settingsDayOfPayment
+                // ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
+                // : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
 
             try
             {
@@ -79,6 +80,10 @@ public static class PlanRegistrationHelper
 
                                         planRegistration.PlannedBreakOfShift1 = breakPartMinutes;
                                     }
+                                    else
+                                    {
+                                        planRegistration.PlannedBreakOfShift1 = 0;
+                                    }
                                 }
                             }
 
@@ -107,6 +112,10 @@ public static class PlanRegistrationHelper
                                     var breakPartMinutes = BreakTimeCalculator(breakPart);
 
                                     planRegistration.PlannedBreakOfShift1 = breakPartMinutes;
+                                }
+                                else
+                                {
+                                    planRegistration.PlannedBreakOfShift1 = 0;
                                 }
                             }
 
@@ -147,6 +156,10 @@ public static class PlanRegistrationHelper
 
                                             planRegistration.PlannedBreakOfShift2 = breakPartMinutes;
                                         }
+                                        else
+                                        {
+                                            planRegistration.PlannedBreakOfShift2 = 0;
+                                        }
                                     }
                                 }
 
@@ -175,6 +188,10 @@ public static class PlanRegistrationHelper
                                         var breakPartMinutes = BreakTimeCalculator(breakPart);
 
                                         planRegistration.PlannedBreakOfShift2 = breakPartMinutes;
+                                    }
+                                    else
+                                    {
+                                        planRegistration.PlannedBreakOfShift2 = 0;
                                     }
                                 }
                             }
@@ -214,6 +231,10 @@ public static class PlanRegistrationHelper
                                             var breakPartMinutes = BreakTimeCalculator(breakPart);
 
                                             planRegistration.PlannedBreakOfShift3 = breakPartMinutes;
+                                        }
+                                        else
+                                        {
+                                            planRegistration.PlannedBreakOfShift3 = 0;
                                         }
                                     }
                                 }
@@ -255,6 +276,10 @@ public static class PlanRegistrationHelper
 
                                             planRegistration.PlannedBreakOfShift4 = breakPartMinutes;
                                         }
+                                        else
+                                        {
+                                            planRegistration.PlannedBreakOfShift4 = 0;
+                                        }
                                     }
                                 }
                             }
@@ -295,6 +320,10 @@ public static class PlanRegistrationHelper
                                             var breakPartMinutes = BreakTimeCalculator(breakPart);
 
                                             planRegistration.PlannedBreakOfShift5 = breakPartMinutes;
+                                        }
+                                        else
+                                        {
+                                            planRegistration.PlannedBreakOfShift5 = 0;
                                         }
                                     }
                                 }

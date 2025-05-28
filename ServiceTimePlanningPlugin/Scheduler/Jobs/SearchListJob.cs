@@ -32,28 +32,28 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 var googleSheetId = await dbContext.PluginConfigurationValues
                     .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
 
-                var dayOfPayment = await dbContext.PluginConfigurationValues
-                    .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:DayOfPayment");
+                // var dayOfPayment = await dbContext.PluginConfigurationValues
+                    // .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:DayOfPayment");
 
                 if (googleSheetId == null)
                 {
                     return;
                 }
 
-                if (dayOfPayment == null)
-                {
-                    return;
-                }
+                // if (dayOfPayment == null)
+                // {
+                    // return;
+                // }
 
                 if (string.IsNullOrEmpty(googleSheetId.Value))
                 {
                     return;
                 }
 
-                if (string.IsNullOrEmpty(dayOfPayment.Value))
-                {
-                    return;
-                }
+                // if (string.IsNullOrEmpty(dayOfPayment.Value))
+                // {
+                    // return;
+                // }
 
                 var applicationName = "Google Sheets API Integration";
                 var privateKey = Environment.GetEnvironmentVariable("PRIVATE_KEY");
@@ -270,7 +270,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             }
 
                             await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext,
-                                assignedSite, int.Parse(dayOfPayment.Value));
+                                assignedSite, DateTime.Now.AddMonths(-1));
                         }
                     }
                 }
@@ -295,12 +295,13 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 .Select(x => x.SiteId)
                 .ToListAsync();
 
-            var settingsDayOfPayment = int.Parse(dbContext.PluginConfigurationValues
-                .First(x => x.Name == "TimePlanningBaseSettings:DayOfPayment").Value);
+            // var settingsDayOfPayment = int.Parse(dbContext.PluginConfigurationValues
+                // .First(x => x.Name == "TimePlanningBaseSettings:DayOfPayment").Value);
             var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
-            var dayOfPayment = toDay.Day >= settingsDayOfPayment
-                ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
-                : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
+            // var dayOfPayment = toDay.Day >= settingsDayOfPayment
+                // ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
+                // : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
+            var dayOfPayment = toDay.AddMonths(-1);
 
             Parallel.ForEach(siteIds, siteId =>
             {
@@ -336,7 +337,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                             .FirstOrDefault(x => x.SiteId == siteId);
                         planRegistration = PlanRegistrationHelper
-                            .UpdatePlanRegistration(planRegistration, dbContext, assignedSite, settingsDayOfPayment)
+                            .UpdatePlanRegistration(planRegistration, dbContext, assignedSite, dayOfPayment)
                             .GetAwaiter().GetResult();
 
                         if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
