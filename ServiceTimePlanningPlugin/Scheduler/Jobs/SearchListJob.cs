@@ -131,8 +131,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                         // Iterate over each pair of columns starting from the fourth column
                         for (int j = 3; j < row.Count; j += 2)
                         {
-                            var siteName = headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "")
-                                .Trim();
+                            var siteName = headerRows[j].ToString().Split(" - ").Length > 1
+                                ? headerRows[j].ToString().Split(" - ")[0].ToLower().Replace(" ", "").Trim()
+                                : headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
                             Console.WriteLine($"Processing site: {siteName}");
                             var site = await sdkContext.Sites
                                 .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
@@ -182,9 +183,26 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                             var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
 
-                            var planRegistration = await dbContext.PlanRegistrations.SingleOrDefaultAsync(x =>
-                                x.Date == midnight && x.SdkSitId == site.MicrotingUid &&
-                                x.WorkflowState != Constants.WorkflowStates.Removed);
+                            var planRegistrations = await dbContext.PlanRegistrations.Where(x =>
+                                    x.Date == midnight && x.SdkSitId == site.MicrotingUid)
+                                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                                .ToListAsync();
+                            if (planRegistrations.Count > 1)
+                            {
+                                Console.WriteLine(
+                                    $"Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                SentrySdk.CaptureMessage(
+                                    $"Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                foreach (var plan in planRegistrations)
+                                {
+                                    Console.WriteLine(
+                                        $"PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
+                                    SentrySdk.CaptureMessage(
+                                        $"PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
+                                }
+                                continue;
+                            }
+                            var planRegistration = planRegistrations.FirstOrDefault();
 
                             if (planRegistration == null)
                             {
