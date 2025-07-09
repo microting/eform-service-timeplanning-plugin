@@ -355,7 +355,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                             .FirstOrDefault(x => x.SiteId == siteId);
                         planRegistration = PlanRegistrationHelper
-                            .UpdatePlanRegistration(planRegistration, dbContext, assignedSite, dayOfPayment)
+                            .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite, dayOfPayment)
                             .GetAwaiter().GetResult();
 
                         if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
