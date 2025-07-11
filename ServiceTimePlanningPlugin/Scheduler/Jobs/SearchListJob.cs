@@ -32,28 +32,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 var googleSheetId = await dbContext.PluginConfigurationValues
                     .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:GoogleSheetId");
 
-                // var dayOfPayment = await dbContext.PluginConfigurationValues
-                    // .FirstOrDefaultAsync(x => x.Name == "TimePlanningBaseSettings:DayOfPayment");
-
                 if (googleSheetId == null)
                 {
                     return;
                 }
 
-                // if (dayOfPayment == null)
-                // {
-                    // return;
-                // }
-
                 if (string.IsNullOrEmpty(googleSheetId.Value))
                 {
                     return;
                 }
-
-                // if (string.IsNullOrEmpty(dayOfPayment.Value))
-                // {
-                    // return;
-                // }
 
                 var applicationName = "Google Sheets API Integration";
                 var privateKey = Environment.GetEnvironmentVariable("PRIVATE_KEY");
@@ -200,8 +187,10 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     SentrySdk.CaptureMessage(
                                         $"PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
                                 }
+
                                 continue;
                             }
+
                             var planRegistration = planRegistrations.FirstOrDefault();
 
                             if (planRegistration == null)
@@ -313,71 +302,76 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 .Select(x => x.SiteId)
                 .ToListAsync();
 
-            // var settingsDayOfPayment = int.Parse(dbContext.PluginConfigurationValues
-                // .First(x => x.Name == "TimePlanningBaseSettings:DayOfPayment").Value);
             var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
-            // var dayOfPayment = toDay.Day >= settingsDayOfPayment
-                // ? new DateTime(DateTime.Now.Year, DateTime.Now.Month, settingsDayOfPayment, 0, 0, 0)
-                // : new DateTime(DateTime.Now.Year, DateTime.Now.Month - 1, settingsDayOfPayment, 0, 0, 0);
             var dayOfPayment = toDay.AddMonths(-1);
 
             Parallel.ForEach(siteIds, siteId =>
             {
-                var innerDbContext = dbContextHelper.GetDbContext();
-
-                var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
-                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                    .Where(x => x.SdkSitId == siteId)
-                    .Where(x => x.Date > dayOfPayment)
-                    .OrderBy(x => x.Date)
-                    .Select(x => x.Id)
-                    .ToList();
-
-                foreach (var planRegistrationId in planRegistrationIdsForSite)
+                try
                 {
-                    var planRegistration = innerDbContext.PlanRegistrations
-                        .AsTracking()
-                        .First(x => x.Id == planRegistrationId);
-                    Console.WriteLine(
-                        $@"Checking planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
-                    if (planRegistration.Date > DateTime.Now.AddMonths(6))
+                    var innerDbContext = dbContextHelper.GetDbContext();
+
+                    var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
+                        .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                        .Where(x => x.SdkSitId == siteId)
+                        .Where(x => x.Date > dayOfPayment)
+                        .OrderBy(x => x.Date)
+                        .Select(x => x.Id)
+                        .ToList();
+
+                    foreach (var planRegistrationId in planRegistrationIdsForSite)
                     {
-                        planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
+                        var planRegistration = innerDbContext.PlanRegistrations
+                            .AsTracking()
+                            .First(x => x.Id == planRegistrationId);
                         Console.WriteLine(
-                            $@"Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
-                    }
-                    else
-                    {
-                        var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
-                            .First(x => x.Id == planRegistration.Id);
-
-                        var assignedSite = dbContext.AssignedSites
-                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                            .FirstOrDefault(x => x.SiteId == siteId);
-                        planRegistration = PlanRegistrationHelper
-                            .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite, dayOfPayment)
-                            .GetAwaiter().GetResult();
-
-                        if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
-                            originalPlanRegistration.Flex != planRegistration.Flex)
+                            $@"Checking planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
+                        if (planRegistration.Date > DateTime.Now.AddMonths(6))
                         {
-                            SentrySdk.CaptureMessage(
-                                $"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
-                                $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
-                                $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}",
-                                SentryLevel.Error);
+                            planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
                             Console.WriteLine(
-                                $@"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
-                                $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
-                                $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
-                            planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
+                                $@"Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
                         }
                         else
                         {
-                            Console.WriteLine(
-                                $@"PlanRegistration has not changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
+                            var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
+                                .First(x => x.Id == planRegistration.Id);
+
+                            var assignedSite = innerDbContext.AssignedSites
+                                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                                .FirstOrDefault(x => x.SiteId == siteId);
+                            planRegistration = PlanRegistrationHelper
+                                .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite, dayOfPayment)
+                                .GetAwaiter().GetResult();
+
+                            if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
+                                originalPlanRegistration.Flex != planRegistration.Flex)
+                            {
+                                SentrySdk.CaptureMessage(
+                                    $"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                    $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
+                                    $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}",
+                                    SentryLevel.Error);
+                                Console.WriteLine(
+                                    $@"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                    $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
+                                    $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
+                                planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
+                            }
+                            else
+                            {
+                                Console.WriteLine(
+                                    $@"PlanRegistration has not changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
+                            }
                         }
                     }
+
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    Console.WriteLine(ex.StackTrace);
+                    SentrySdk.CaptureException(ex);
                 }
             });
         }
