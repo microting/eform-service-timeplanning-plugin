@@ -113,7 +113,6 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             }
 
                             var dateValue = DateTime.ParseExact(date, "dd.MM.yyyy", CultureInfo.InvariantCulture);
-                            Console.WriteLine($"Processing date: {dateValue}");
                             if (dateValue < DateTime.Now.AddDays(-1))
                             {
                                 continue;
@@ -123,6 +122,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             {
                                 continue;
                             }
+                            if (row.Count < 4)
+                            {
+                                row.Add(0);
+                                row.Add(string.Empty);
+                            }
 
                             // Iterate over each pair of columns starting from the fourth column
                             for (int j = 3; j < row.Count; j += 2)
@@ -130,7 +134,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 var siteName = headerRows[j].ToString().Split(" - ").Length > 1
                                     ? headerRows[j].ToString().Split(" - ")[0].ToLower().Replace(" ", "").Trim()
                                     : headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
-                                Console.WriteLine($"Processing site: {siteName}");
+                                Console.WriteLine($"Processing site: {siteName} for date: {dateValue}");
                                 var site = await sdkContext.Sites
                                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                     .FirstOrDefaultAsync(x =>
