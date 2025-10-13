@@ -65,12 +65,13 @@ public class Core : ISdkEventHandler
 
     public void CaseCompleted(object sender, EventArgs args)
     {
-        CaseDto trigger = (CaseDto)sender;
-
-        if (trigger.CheckUId != null)
-        {
-            _bus.SendLocal(new eFormCompleted((int)trigger.CheckUId, trigger.SiteUId));
-        }
+        // Do nothing
+        // CaseDto trigger = (CaseDto)sender;
+        //
+        // if (trigger.CheckUId != null)
+        // {
+        //     _bus.SendLocal(new eFormCompleted((int)trigger.CheckUId, trigger.SiteUId));
+        // }
     }
 
     public void CaseDeleted(object sender, EventArgs args)
