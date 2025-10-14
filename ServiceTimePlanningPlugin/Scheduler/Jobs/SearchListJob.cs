@@ -340,8 +340,6 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             var planRegistration = innerDbContext.PlanRegistrations
                                 .AsTracking()
                                 .First(x => x.Id == planRegistrationId);
-                            Console.WriteLine(
-                                $@"Checking planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
                             if (planRegistration.Date > DateTime.Now.AddMonths(6))
                             {
                                 planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
@@ -374,11 +372,6 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                         $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
                                         $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
                                     planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
-                                }
-                                else
-                                {
-                                    Console.WriteLine(
-                                        $@"PlanRegistration has not changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}");
                                 }
                             }
                         }
