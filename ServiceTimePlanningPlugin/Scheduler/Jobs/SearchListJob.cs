@@ -122,10 +122,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             {
                                 continue;
                             }
-                            if (row.Count < 4)
+
+                            // This is done since google api skips empty columns at the end of the row
+                            if (row.Count < headerRows.Count)
                             {
-                                row.Add(0);
-                                row.Add(string.Empty);
+                                var itemsToAdd = headerRows.Count - row.Count;
+                                for (int k = 0; k < itemsToAdd; k++)
+                                {
+                                    row.Add(string.Empty);
+                                }
                             }
 
                             // Iterate over each pair of columns starting from the fourth column
