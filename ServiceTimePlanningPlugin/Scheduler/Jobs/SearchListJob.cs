@@ -115,11 +115,13 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             var dateValue = DateTime.ParseExact(date, "dd.MM.yyyy", CultureInfo.InvariantCulture);
                             if (dateValue < DateTime.Now.AddDays(-1))
                             {
+                                Console.WriteLine($"info: Skipping past date: {dateValue}");
                                 continue;
                             }
 
                             if (dateValue > DateTime.Now.AddDays(180))
                             {
+                                Console.WriteLine($"info: Skipping future date beyond 6 months: {dateValue}");
                                 continue;
                             }
 
@@ -136,10 +138,10 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             // Iterate over each pair of columns starting from the fourth column
                             for (int j = 3; j < row.Count; j += 2)
                             {
-                                var siteName = headerRows[j].ToString().Split(" - ").Length > 1
-                                    ? headerRows[j].ToString().Split(" - ")[0].ToLower().Replace(" ", "").Trim()
-                                    : headerRows[j].ToString().Split(" - ").First().ToLower().Replace(" ", "").Trim();
-                                Console.WriteLine($"Processing site: {siteName} for date: {dateValue}");
+                                var siteName = headerRows[j].ToString().Replace("- timer", "")
+                                    .ToLower().Replace(" ", "").Trim();
+
+                                Console.WriteLine($"info: Processing site: {siteName} for date: {dateValue}");
                                 var site = await sdkContext.Sites
                                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                     .FirstOrDefaultAsync(x =>
@@ -195,15 +197,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 if (planRegistrations.Count > 1)
                                 {
                                     Console.WriteLine(
-                                        $"Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                        $"fail: Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
                                     SentrySdk.CaptureMessage(
-                                        $"Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                        $"fail: Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
                                     foreach (var plan in planRegistrations)
                                     {
                                         Console.WriteLine(
-                                            $"PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
+                                            $"fail: PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
                                         SentrySdk.CaptureMessage(
-                                            $"PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
+                                            $"fail: PlanRegistration ID: {plan.Id}, PlanText: {plan.PlanText}, PlanHours: {plan.PlanHours}, Date: {plan.Date}, workflowState: {plan.WorkflowState}, SdkSitId: {plan.SdkSitId}");
                                     }
 
                                     continue;
@@ -256,7 +258,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     if (planRegistration.PlanText != planText)
                                     {
                                         Console.WriteLine(
-                                            $"PlanText for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanText} to {planText}");
+                                            $"warn: PlanText for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanText} to {planText}");
                                     }
 
                                     planRegistration.PlanText = planText;
@@ -264,7 +266,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     if (planRegistration.PlanHours != parsedPlanHours)
                                     {
                                         Console.WriteLine(
-                                            $"PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
+                                            $"warn: PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
                                     }
 
                                     if (!planRegistration.PlanChangedByAdmin)
@@ -304,13 +306,13 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     }
                     else
                     {
-                        Console.WriteLine("No data found.");
+                        Console.WriteLine("fail: No data found.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    Console.WriteLine(ex.StackTrace);
+                    Console.WriteLine($"fail: {ex.Message}");
+                    Console.WriteLine($"fail: {ex.StackTrace}");
                     SentrySdk.CaptureException(ex);
                 }
             }
@@ -349,7 +351,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             {
                                 planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
                                 Console.WriteLine(
-                                    $@"Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
+                                    $@"info: Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
                             }
                             else
                             {
@@ -373,7 +375,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                         $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}",
                                         SentryLevel.Error);
                                     Console.WriteLine(
-                                        $@"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                        $@"fail: PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
                                         $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
                                         $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
                                     planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
@@ -384,8 +386,8 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex.Message);
-                        Console.WriteLine(ex.StackTrace);
+                        Console.WriteLine($"fail: {ex.Message}");
+                        Console.WriteLine($"fail: {ex.StackTrace}");
                         SentrySdk.CaptureException(ex);
                     }
                 });
