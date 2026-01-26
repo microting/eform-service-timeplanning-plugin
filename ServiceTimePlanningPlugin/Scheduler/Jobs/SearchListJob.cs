@@ -182,11 +182,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 var parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
                                     NumberFormatInfo.InvariantInfo);
 
-                                var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
-                                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                    .Where(x => x.Date < dateValue && x.SdkSitId == (int)site.MicrotingUid!)
-                                    .OrderByDescending(x => x.Date)
-                                    .FirstOrDefaultAsync();
+                                // var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
+                                //     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                                //     .Where(x => x.Date < dateValue && x.SdkSitId == (int)site.MicrotingUid!)
+                                //     .OrderByDescending(x => x.Date)
+                                //     .FirstOrDefaultAsync();
 
                                 var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
 
@@ -235,20 +235,21 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                         StatusCaseId = 0
                                     };
 
-                                    if (preTimePlanning != null)
-                                    {
-                                        planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                        planRegistration.SumFlexEnd =
-                                            preTimePlanning.SumFlexEnd + planRegistration.Flex -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.Flex = -planRegistration.PlanHours;
-                                    }
-                                    else
-                                    {
-                                        planRegistration.Flex = -planRegistration.PlanHours;
-                                        planRegistration.SumFlexEnd = planRegistration.Flex;
-                                        planRegistration.SumFlexStart = 0;
-                                    }
+                                    // Commented out flex calculations to let UpdatePlanRegistration handle it
+                                    // if (preTimePlanning != null)
+                                    // {
+                                    //     planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
+                                    //     planRegistration.SumFlexEnd =
+                                    //         preTimePlanning.SumFlexEnd + planRegistration.Flex -
+                                    //         planRegistration.PaiedOutFlex;
+                                    //     planRegistration.Flex = -planRegistration.PlanHours;
+                                    // }
+                                    // else
+                                    // {
+                                    //     planRegistration.Flex = -planRegistration.PlanHours;
+                                    //     planRegistration.SumFlexEnd = planRegistration.Flex;
+                                    //     planRegistration.SumFlexStart = 0;
+                                    // }
 
                                     await planRegistration.Create(dbContext);
                                 }
@@ -276,25 +277,26 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                                     planRegistration.UpdatedByUserId = 1;
 
-                                    if (preTimePlanning != null)
-                                    {
-                                        planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                        planRegistration.SumFlexEnd =
-                                            preTimePlanning.SumFlexEnd + planRegistration.PlanHours -
-                                            planRegistration.NettoHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.Flex =
-                                            planRegistration.NettoHours - planRegistration.PlanHours;
-                                    }
-                                    else
-                                    {
-                                        planRegistration.SumFlexEnd =
-                                            planRegistration.PlanHours - planRegistration.NettoHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.SumFlexStart = 0;
-                                        planRegistration.Flex =
-                                            planRegistration.NettoHours - planRegistration.PlanHours;
-                                    }
+                                    // Commented out flex calculations to let UpdatePlanRegistration handle it
+                                    // if (preTimePlanning != null)
+                                    // {
+                                    //     planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
+                                    //     planRegistration.SumFlexEnd =
+                                    //         preTimePlanning.SumFlexEnd + planRegistration.PlanHours -
+                                    //         planRegistration.NettoHours -
+                                    //         planRegistration.PaiedOutFlex;
+                                    //     planRegistration.Flex =
+                                    //         planRegistration.NettoHours - planRegistration.PlanHours;
+                                    // }
+                                    // else
+                                    // {
+                                    //     planRegistration.SumFlexEnd =
+                                    //         planRegistration.PlanHours - planRegistration.NettoHours -
+                                    //         planRegistration.PaiedOutFlex;
+                                    //     planRegistration.SumFlexStart = 0;
+                                    //     planRegistration.Flex =
+                                    //         planRegistration.NettoHours - planRegistration.PlanHours;
+                                    // }
 
                                     await planRegistration.Update(dbContext);
                                 }
