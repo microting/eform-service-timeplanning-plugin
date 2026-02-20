@@ -179,8 +179,13 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     planHours = planHours.Replace(",", ".").Trim();
                                 }
 
-                                var parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
-                                    NumberFormatInfo.InvariantInfo);
+                                var parsedPlanHours = 0.0;
+
+                                if (!string.IsNullOrWhiteSpace(planHours))
+                                {
+                                    parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
+                                        NumberFormatInfo.InvariantInfo);
+                                }
 
                                 // var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
                                 //     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
