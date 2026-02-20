@@ -221,8 +221,8 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                         PlanText = planText,
                                         PlanHours = parsedPlanHours,
                                         SdkSitId = (int)site.MicrotingUid!,
-                                        CreatedByUserId = 1,
-                                        UpdatedByUserId = 1,
+                                        CreatedByUserId = 0,
+                                        UpdatedByUserId = 0,
                                         NettoHours = 0,
                                         PaiedOutFlex = 0,
                                         Pause1Id = 0,
@@ -263,40 +263,23 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     }
 
                                     planRegistration.PlanText = planText;
-                                    // print to console if the current PlanHours is different from the one in the database
-                                    if (planRegistration.PlanHours != parsedPlanHours)
+
+                                    if (string.IsNullOrEmpty(planRegistration.PlanText))
                                     {
-                                        Console.WriteLine(
-                                            $"warn: PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
+                                        // print to console if the current PlanHours is different from the one in the database
+                                        if (planRegistration.PlanHours != parsedPlanHours)
+                                        {
+                                            Console.WriteLine(
+                                                $"warn: PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
+                                        }
+
+                                        if (!planRegistration.PlanChangedByAdmin)
+                                        {
+                                            planRegistration.PlanHours = parsedPlanHours;
+                                        }
                                     }
 
-                                    if (!planRegistration.PlanChangedByAdmin)
-                                    {
-                                        planRegistration.PlanHours = parsedPlanHours;
-                                    }
-
-                                    planRegistration.UpdatedByUserId = 1;
-
-                                    // Commented out flex calculations to let UpdatePlanRegistration handle it
-                                    // if (preTimePlanning != null)
-                                    // {
-                                    //     planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                    //     planRegistration.SumFlexEnd =
-                                    //         preTimePlanning.SumFlexEnd + planRegistration.PlanHours -
-                                    //         planRegistration.NettoHours -
-                                    //         planRegistration.PaiedOutFlex;
-                                    //     planRegistration.Flex =
-                                    //         planRegistration.NettoHours - planRegistration.PlanHours;
-                                    // }
-                                    // else
-                                    // {
-                                    //     planRegistration.SumFlexEnd =
-                                    //         planRegistration.PlanHours - planRegistration.NettoHours -
-                                    //         planRegistration.PaiedOutFlex;
-                                    //     planRegistration.SumFlexStart = 0;
-                                    //     planRegistration.Flex =
-                                    //         planRegistration.NettoHours - planRegistration.PlanHours;
-                                    // }
+                                    planRegistration.UpdatedByUserId = 0;
 
                                     await planRegistration.Update(dbContext);
                                 }
