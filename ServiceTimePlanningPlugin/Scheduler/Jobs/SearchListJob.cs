@@ -176,7 +176,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 // Replace comma with dot if needed
                                 if (planHours.Contains(','))
                                 {
-                                    planHours = planHours.Replace(",", ".");
+                                    planHours = planHours.Replace(",", ".").Trim();
                                 }
 
                                 var parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
