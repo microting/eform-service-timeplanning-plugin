@@ -23,16 +23,18 @@ public static class PlanRegistrationHelper
         PlanRegistration planRegistration,
         TimePlanningPnDbContext dbContext,
         AssignedSite dbAssignedSite,
-        DateTime dayOfPayment
+        DateTime dayOfPayment,
+        OneMinuteModeTimeline oneMinuteTimeline
         )
     {
         var tainted = false;
-        // ONE query, in-memory lookups: resolves the mode that was in force when
-        // this row was REGISTERED. Every mode fork below reads the resulting
-        // rowIsOneMinute, never the site's CURRENT flag — recomputing closed
-        // days under a newly-enabled one-minute flag would silently rewrite
-        // historical balances. See OneMinuteModeTimeline.
-        var oneMinuteTimeline = await OneMinuteModeTimeline.BuildAsync(dbContext, dbAssignedSite);
+        // Every mode fork below reads the resulting rowIsOneMinute, never the
+        // site's CURRENT flag — recomputing closed days under a newly-enabled
+        // one-minute flag would silently rewrite historical balances. The
+        // timeline itself is a required parameter (built ONCE per site by the
+        // caller, before its row loop) rather than built here per call — see
+        // OneMinuteModeTimeline: "Build once per site per request scope —
+        // never per row."
         var rowIsOneMinute = oneMinuteTimeline.WasOneMinuteForRow(planRegistration);
         // foreach (var plan in planningsInPeriod)
         // {

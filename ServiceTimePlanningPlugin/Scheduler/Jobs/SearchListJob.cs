@@ -8,6 +8,7 @@ using Google.Apis.Sheets.v4;
 using Microsoft.EntityFrameworkCore;
 using Microting.eForm.Infrastructure.Constants;
 using Microting.TimePlanningBase.Infrastructure.Data.Entities;
+using Microting.TimePlanningBase.Infrastructure.Helpers;
 using Sentry;
 using ServiceTimePlanningPlugin.Infrastructure.Helpers;
 
@@ -289,8 +290,17 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     await planRegistration.Update(dbContext);
                                 }
 
+                                // Sheet import: (date row) x (site column) grid bounded by the
+                                // sheet's row count, refreshed a few times a day; assignedSite is
+                                // already re-fetched per (date, site) pair above (pre-existing,
+                                // unrelated to this change), so building the timeline per call here
+                                // matches that existing per-iteration cost rather than introducing a
+                                // new hot-loop N+1 -- unlike case 18 below, this is not a tight
+                                // per-row loop over one site's month of history.
+                                var sheetImportOneMinuteTimeline =
+                                    await OneMinuteModeTimeline.BuildAsync(dbContext, assignedSite);
                                 await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext,
-                                    assignedSite, DateTime.Now.AddMonths(-1));
+                                    assignedSite, DateTime.Now.AddMonths(-1), sheetImportOneMinuteTimeline);
                             }
                         }
                     }
@@ -324,6 +334,17 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     {
                         var innerDbContext = dbContextHelper.GetDbContext();
 
+                        // Hoisted out of the row loop below: assignedSite does not vary
+                        // per row, and the timeline built from it must be built ONCE per
+                        // site -- never per row (~1 month of daily registrations per site
+                        // here) -- otherwise every row issues its own AssignedSiteVersions
+                        // query. See OneMinuteModeTimeline.
+                        var assignedSite = innerDbContext.AssignedSites
+                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                            .FirstOrDefault(x => x.SiteId == siteId);
+                        var oneMinuteTimeline =
+                            OneMinuteModeTimeline.BuildAsync(innerDbContext, assignedSite).GetAwaiter().GetResult();
+
                         var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
                             .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                             .Where(x => x.SdkSitId == siteId)
@@ -348,12 +369,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
                                     .First(x => x.Id == planRegistration.Id);
 
-                                var assignedSite = innerDbContext.AssignedSites
-                                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                    .FirstOrDefault(x => x.SiteId == siteId);
                                 planRegistration = PlanRegistrationHelper
                                     .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite,
-                                        dayOfPayment)
+                                        dayOfPayment, oneMinuteTimeline)
                                     .GetAwaiter().GetResult();
 
                                 if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
