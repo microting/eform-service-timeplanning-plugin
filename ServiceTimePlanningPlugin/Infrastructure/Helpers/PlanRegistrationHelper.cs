@@ -12,6 +12,7 @@ using Microting.eFormApi.BasePn.Infrastructure.Helpers.PluginDbOptions;
 using Microting.TimePlanningBase.Infrastructure.Data;
 using Microting.TimePlanningBase.Infrastructure.Data.Entities;
 using Microting.TimePlanningBase.Infrastructure.Data.Models;
+using Microting.TimePlanningBase.Infrastructure.Helpers;
 using Sentry;
 
 namespace ServiceTimePlanningPlugin.Infrastructure.Helpers;
@@ -22,10 +23,19 @@ public static class PlanRegistrationHelper
         PlanRegistration planRegistration,
         TimePlanningPnDbContext dbContext,
         AssignedSite dbAssignedSite,
-        DateTime dayOfPayment
+        DateTime dayOfPayment,
+        OneMinuteModeTimeline oneMinuteTimeline
         )
     {
         var tainted = false;
+        // Every mode fork below reads the resulting rowIsOneMinute, never the
+        // site's CURRENT flag — recomputing closed days under a newly-enabled
+        // one-minute flag would silently rewrite historical balances. The
+        // timeline itself is a required parameter (built ONCE per site by the
+        // caller, before its row loop) rather than built here per call — see
+        // OneMinuteModeTimeline: "Build once per site per request scope —
+        // never per row."
+        var rowIsOneMinute = oneMinuteTimeline.WasOneMinuteForRow(planRegistration);
         // foreach (var plan in planningsInPeriod)
         // {
             // var planRegistration = await dbContext.PlanRegistrations.AsTracking().FirstAsync(x => x.Id == planRegistrationId);
@@ -382,44 +392,17 @@ public static class PlanRegistrationHelper
                                         .OrderByDescending(x => x.Date)
                                         .FirstOrDefaultAsync();
 
-                                if (preTimePlanning != null)
+                                // Fork on the mode AT REGISTRATION, not the site's current
+                                // flag — see OneMinuteModeTimeline for why.
+                                if (rowIsOneMinute)
                                 {
-                                    if (planRegistration.NettoHoursOverrideActive)
-                                    {
-                                        planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                        planRegistration.SumFlexEnd =
-                                            preTimePlanning.SumFlexEnd + planRegistration.NettoHoursOverride -
-                                            planRegistration.PlanHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.Flex = planRegistration.NettoHoursOverride - planRegistration.PlanHours;
-                                    } else
-                                    {
-                                        planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                        planRegistration.SumFlexEnd =
-                                            preTimePlanning.SumFlexEnd + planRegistration.NettoHours -
-                                            planRegistration.PlanHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
-                                    }
+                                    FlexChain.ApplyNettoFlexChainSecondPrecision(
+                                        planRegistration, preTimePlanning,
+                                        oneMinuteTimeline.WasOneMinuteFor(preTimePlanning));
                                 }
                                 else
                                 {
-                                    if (planRegistration.NettoHoursOverrideActive)
-                                    {
-                                        planRegistration.SumFlexEnd =
-                                            planRegistration.NettoHoursOverride - planRegistration.PlanHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.SumFlexStart = 0;
-                                        planRegistration.Flex = planRegistration.NettoHoursOverride - planRegistration.PlanHours;
-                                    }
-                                    else
-                                    {
-                                        planRegistration.SumFlexEnd =
-                                            planRegistration.NettoHours - planRegistration.PlanHours -
-                                            planRegistration.PaiedOutFlex;
-                                        planRegistration.SumFlexStart = 0;
-                                        planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
-                                    }
+                                    FlexChain.ApplyNettoFlexChainDecimal(planRegistration, preTimePlanning);
                                 }
                             }
 
@@ -688,22 +671,17 @@ public static class PlanRegistrationHelper
                                     .OrderByDescending(x => x.Date)
                                     .FirstOrDefaultAsync();
 
-                            if (preTimePlanning != null)
+                            // Fork on the mode AT REGISTRATION, not the site's current
+                            // flag — see OneMinuteModeTimeline for why.
+                            if (rowIsOneMinute)
                             {
-                                planRegistration.SumFlexStart = preTimePlanning.SumFlexEnd;
-                                planRegistration.SumFlexEnd =
-                                    preTimePlanning.SumFlexEnd + planRegistration.NettoHours -
-                                    planRegistration.PlanHours -
-                                    planRegistration.PaiedOutFlex;
-                                planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
+                                FlexChain.ApplyNettoFlexChainSecondPrecision(
+                                    planRegistration, preTimePlanning,
+                                    oneMinuteTimeline.WasOneMinuteFor(preTimePlanning));
                             }
                             else
                             {
-                                planRegistration.SumFlexEnd =
-                                    planRegistration.NettoHours - planRegistration.PlanHours -
-                                    planRegistration.PaiedOutFlex;
-                                planRegistration.SumFlexStart = 0;
-                                planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
+                                FlexChain.ApplyNettoFlexChainDecimal(planRegistration, preTimePlanning);
                             }
                         }
 
