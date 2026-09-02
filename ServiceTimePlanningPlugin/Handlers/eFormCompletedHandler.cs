@@ -42,6 +42,7 @@ using Messages;
 using Microsoft.EntityFrameworkCore;
 using Microting.TimePlanningBase.Infrastructure.Data;
 using Microting.TimePlanningBase.Infrastructure.Data.Entities;
+using Microting.TimePlanningBase.Infrastructure.Helpers;
 using Rebus.Handlers;
 
 public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
@@ -194,35 +195,44 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     }
                 }
 
-                var minutesMultiplier = 5;
+                var dbAssignedSite = await dbContext.AssignedSites
+                    .FirstOrDefaultAsync(x => x.SiteId == site.MicrotingUid);
+                // ONE query, in-memory lookups: resolves the mode that was in force
+                // when each row was REGISTERED. Built ONCE here, before the cascade
+                // loop below, and reused for every row in it — every mode fork in
+                // this handler reads the resulting per-row mode, never the site's
+                // CURRENT flag. See OneMinuteModeTimeline.
+                var oneMinuteTimeline = await OneMinuteModeTimeline.BuildAsync(dbContext, dbAssignedSite);
+                var rowIsOneMinute = oneMinuteTimeline.WasOneMinuteForRow(timePlanning);
 
-                double nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
-                nettoMinutes -= timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0;
-                if (timePlanning.Stop2Id != 0)
-                {
-                    nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
-                    nettoMinutes -= timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0;
-                }
-
-                nettoMinutes *= minutesMultiplier;
-
-                double hours = nettoMinutes / 60;
-                timePlanning.NettoHours = hours;
-                timePlanning.Flex = hours - timePlanning.PlanHours;
                 var preTimePlanning =
                     await dbContext.PlanRegistrations.AsNoTracking()
                         .Where(x => x.Date < timePlanning.Date && x.SdkSitId == site.MicrotingUid)
                         .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                         .OrderByDescending(x => x.Date).FirstOrDefaultAsync();
-                if (preTimePlanning != null)
+
+                if (rowIsOneMinute)
                 {
-                    timePlanning.SumFlexEnd = preTimePlanning.SumFlexEnd + timePlanning.Flex - timePlanning.PaiedOutFlex;
-                    timePlanning.SumFlexStart = preTimePlanning.SumFlexEnd;
+                    FlexChain.ApplyNettoFlexChainSecondPrecision(
+                        timePlanning, preTimePlanning, oneMinuteTimeline.WasOneMinuteFor(preTimePlanning));
                 }
                 else
                 {
-                    timePlanning.SumFlexEnd = timePlanning.Flex - timePlanning.PaiedOutFlex;
-                    timePlanning.SumFlexStart = 0;
+                    var minutesMultiplier = 5;
+
+                    double nettoMinutes = timePlanning.Stop1Id - timePlanning.Start1Id;
+                    nettoMinutes -= timePlanning.Pause1Id > 0 ? timePlanning.Pause1Id - 1 : 0;
+                    if (timePlanning.Stop2Id != 0)
+                    {
+                        nettoMinutes = nettoMinutes + timePlanning.Stop2Id - timePlanning.Start2Id;
+                        nettoMinutes -= timePlanning.Pause2Id > 0 ? timePlanning.Pause2Id - 1 : 0;
+                    }
+
+                    nettoMinutes *= minutesMultiplier;
+
+                    timePlanning.NettoHours = nettoMinutes / 60;
+
+                    FlexChain.ApplyNettoFlexChainDecimal(timePlanning, preTimePlanning);
                 }
 
                 Message theMessage =
@@ -248,7 +258,12 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                 await timePlanning.Update(dbContext);
                 if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id && x.WorkflowState != Constants.WorkflowStates.Removed))
                 {
-                    double preSumFlexStart = timePlanning.SumFlexEnd;
+                    // Ascending, unbounded walk carrying its running seed IN
+                    // MEMORY (the just-updated preceding row, not a re-query) —
+                    // the only correct full-chain walk in the stack. What each
+                    // row computes is now mode-aware via FlexChain; how the loop
+                    // walks is unchanged.
+                    PlanRegistration previousRegistration = timePlanning;
                     var list = await dbContext.PlanRegistrations
                         .Where(x => x.Date > timePlanning.Date && x.SdkSitId == site.MicrotingUid && x.Id != timePlanning.Id)
                         .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
@@ -256,13 +271,20 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
                     foreach (PlanRegistration planRegistration in list)
                     {
                         Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
-                        planRegistration.SumFlexStart = preSumFlexStart;
-                        planRegistration.SumFlexEnd = preSumFlexStart + planRegistration.NettoHours -
-                                                      planRegistration.PlanHours -
-                                                      planRegistration.PaiedOutFlex;
-                        planRegistration.Flex = planRegistration.NettoHours - planRegistration.PlanHours;
+                        // Fork on the mode AT REGISTRATION, not the site's current
+                        // flag — see OneMinuteModeTimeline for why.
+                        if (oneMinuteTimeline.WasOneMinuteForRow(planRegistration))
+                        {
+                            FlexChain.ApplyNettoFlexChainSecondPrecision(
+                                planRegistration, previousRegistration,
+                                oneMinuteTimeline.WasOneMinuteFor(previousRegistration));
+                        }
+                        else
+                        {
+                            FlexChain.ApplyNettoFlexChainDecimal(planRegistration, previousRegistration);
+                        }
                         await planRegistration.Update(dbContext);
-                        preSumFlexStart = planRegistration.SumFlexEnd;
+                        previousRegistration = planRegistration;
                     }
                 }
 
