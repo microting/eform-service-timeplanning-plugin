@@ -26,6 +26,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microting.eForm.Infrastructure.Constants;
+using Microting.eFormApi.BasePn.Infrastructure.Database.Entities;
 using Microting.TimePlanningBase.Infrastructure.Data.Entities;
 using NUnit.Framework;
 using ServiceTimePlanningPlugin.Scheduler.Jobs;
@@ -33,10 +34,14 @@ using ServiceTimePlanningPlugin.Scheduler.Jobs;
 namespace ServiceTimePlanningPlugin.Integration.Test;
 
 /// <summary>
-/// Covers the daily flex-chain catch-up job (FlexChainCatchUpJob.RunCatchUp --
-/// the un-gated entry point; Execute() additionally requires
-/// DateTime.UtcNow.Hour == 3, which would make these tests depend on the
-/// wall-clock hour they happen to run at).
+/// Covers the daily flex-chain catch-up job. Most tests call
+/// FlexChainCatchUpJob.RunCatchUp() -- the entry point with neither the
+/// enable gate nor the hourly schedule gate -- since Execute() additionally
+/// requires TimePlanningBaseSettings:FlexChainCatchUpEnabled == "1" AND
+/// DateTime.UtcNow.Hour == 3, and the hour would make a test depend on the
+/// wall-clock hour it happens to run at. The Execute_* tests below cover the
+/// enable gate specifically -- they can assert on Execute() itself because
+/// the disabled case returns before the hour is ever checked.
 ///
 /// "Today" throughout is the real DateTime.Now.Date, since the job reads the
 /// system clock directly rather than taking an injected clock -- matching
@@ -145,6 +150,21 @@ public class FlexChainCatchUpJobTests : TestBaseSetup
         => await TimePlanningPnDbContext.AssignedSites
             .AsNoTracking()
             .SingleAsync(x => x.SiteId == siteId);
+
+    private async Task SetFlexChainCatchUpEnabled(string value)
+    {
+        TimePlanningPnDbContext.PluginConfigurationValues.Add(new PluginConfigurationValue
+        {
+            Name = "TimePlanningBaseSettings:FlexChainCatchUpEnabled",
+            Value = value,
+            WorkflowState = Constants.WorkflowStates.Created,
+            CreatedAt = DateTime.UtcNow,
+            CreatedByUserId = 1,
+            UpdatedByUserId = 1,
+            Version = 1
+        });
+        await TimePlanningPnDbContext.SaveChangesAsync();
+    }
 
     // ------------------------------------------------------------------
     // A multi-day gap is filled and the cursor advances to today.
@@ -376,6 +396,67 @@ public class FlexChainCatchUpJobTests : TestBaseSetup
             Assert.That(middleRow.SumFlexEnd, Is.EqualTo(3.0).Within(1e-9));
             Assert.That(lastRow.SumFlexStart, Is.EqualTo(middleRow.SumFlexEnd).Within(1e-9));
             Assert.That(lastRow.SumFlexEnd, Is.EqualTo(3.0).Within(1e-9));
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Execute() is gated OFF by default: with no
+    // TimePlanningBaseSettings:FlexChainCatchUpEnabled row at all, nothing
+    // runs -- regardless of the wall-clock hour, since the enable check
+    // happens before the hour check.
+    // ------------------------------------------------------------------
+    [Test]
+    public async Task Execute_WithNoEnabledSetting_DoesNothing_RegardlessOfHour()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+
+        await SeedAssignedSite(siteId, useOneMinute: false, computedThrough: today.AddDays(-4));
+        await SeedFiveMinuteRow(siteId, today.AddDays(-4), planHours: 8, nettoHours: 8,
+            sumFlexStart: 4.0, sumFlexEnd: 5.0);
+        await SeedFiveMinuteRow(siteId, today, planHours: 7, nettoHours: 8);
+
+        await _job.Execute();
+
+        var todayRow = await ReloadRow(siteId, today);
+        var assignedSite = await ReloadAssignedSite(siteId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(todayRow.SumFlexStart, Is.EqualTo(0.0),
+                "Disabled by default: the gap row must be left untouched.");
+            Assert.That(todayRow.SumFlexEnd, Is.EqualTo(0.0));
+            Assert.That(assignedSite.FlexChainComputedThrough, Is.EqualTo(today.AddDays(-4)),
+                "Disabled by default: the cursor must not advance.");
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Execute() stays OFF for any value other than the exact string "1" --
+    // e.g. "0" or "true" must not be treated as enabled.
+    // ------------------------------------------------------------------
+    [Test]
+    public async Task Execute_WithEnabledSettingNotExactlyOne_DoesNothing()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+
+        await SetFlexChainCatchUpEnabled("0");
+        await SeedAssignedSite(siteId, useOneMinute: false, computedThrough: today.AddDays(-4));
+        await SeedFiveMinuteRow(siteId, today.AddDays(-4), planHours: 8, nettoHours: 8,
+            sumFlexStart: 4.0, sumFlexEnd: 5.0);
+        await SeedFiveMinuteRow(siteId, today, planHours: 7, nettoHours: 8);
+
+        await _job.Execute();
+
+        var todayRow = await ReloadRow(siteId, today);
+        var assignedSite = await ReloadAssignedSite(siteId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(todayRow.SumFlexStart, Is.EqualTo(0.0));
+            Assert.That(todayRow.SumFlexEnd, Is.EqualTo(0.0));
+            Assert.That(assignedSite.FlexChainComputedThrough, Is.EqualTo(today.AddDays(-4)));
         });
     }
 }

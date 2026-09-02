@@ -26,11 +26,39 @@ namespace ServiceTimePlanningPlugin.Scheduler.Jobs;
 /// helper, then advances the cursor. Runs once per day (gated to a single
 /// UTC hour that <see cref="SearchListJob"/> does not use) via the same
 /// 60-minute service timer.
+///
+/// This job writes EVERY site EVERY night. Shipping the code and running it
+/// are deliberately two separate decisions: it is gated OFF by default via
+/// the <c>TimePlanningBaseSettings:FlexChainCatchUpEnabled</c> plugin
+/// configuration value (the same "TimePlanningBaseSettings:*" PluginConfigurationValues
+/// idiom this service already uses for MaxParallelism/NumberOfWorkers in
+/// Core.cs, GoogleSheetId in SearchListJob, and EformId/FolderId/InfoeFormId
+/// in EFormCompletedHandler -- a missing/absent value has always meant "this
+/// feature is off" in this codebase, never "on"). An operator must set it to
+/// "1" to turn the job on after an observation period.
 /// </summary>
 public class FlexChainCatchUpJob(DbContextHelper dbContextHelper) : IJob
 {
+    private const string EnabledSettingName = "TimePlanningBaseSettings:FlexChainCatchUpEnabled";
+
     public async Task Execute()
     {
+        // The enable gate comes first, before the hour check and before any
+        // per-site work, so a disabled job costs at most the one lightweight
+        // config lookup below -- never the AssignedSites listing or any row
+        // work. Default is OFF: a missing value, an empty value, or anything
+        // other than "1" all mean disabled.
+        var dbContext = dbContextHelper.GetDbContext();
+        var enabledSetting = await dbContext.PluginConfigurationValues
+            .FirstOrDefaultAsync(x => x.Name == EnabledSettingName);
+
+        if (enabledSetting?.Value != "1")
+        {
+            Console.WriteLine(
+                $"info: FlexChainCatchUpJob is disabled ({EnabledSettingName} is not set to \"1\") -- skipping.");
+            return;
+        }
+
         if (DateTime.UtcNow.Hour != 3)
         {
             return;
@@ -40,10 +68,11 @@ public class FlexChainCatchUpJob(DbContextHelper dbContextHelper) : IJob
     }
 
     /// <summary>
-    /// The actual per-site catch-up walk, without the hourly schedule gate --
-    /// <see cref="Execute"/> is what the service timer calls; this is the
-    /// entry point integration tests call directly so a test run does not
-    /// depend on the wall-clock hour.
+    /// The actual per-site catch-up walk, without the enable gate or the
+    /// hourly schedule gate -- <see cref="Execute"/> is what the service
+    /// timer calls; this is the entry point integration tests call directly
+    /// so a test run does not depend on the wall-clock hour or on seeding a
+    /// PluginConfigurationValues row just to turn the job on.
     /// </summary>
     public async Task RunCatchUp()
     {
@@ -51,20 +80,41 @@ public class FlexChainCatchUpJob(DbContextHelper dbContextHelper) : IJob
 
         var today = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
 
-        var assignedSites = await dbContext.AssignedSites
+        // Only the site ids are read from this context. Each site below gets
+        // its OWN fresh DbContext (matching SearchListJob's case-18 job)
+        // rather than sharing one context across the whole estate -- a
+        // long-lived context accumulates every tracked row from every site
+        // for the life of the run, which both grows memory unboundedly across
+        // ~214 tenant databases and risks one site's tracked entities
+        // interfering with another's change-tracking.
+        var siteIds = await dbContext.AssignedSites
             .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+            .Select(x => x.SiteId)
             .ToListAsync();
 
-        foreach (var assignedSite in assignedSites)
+        foreach (var siteId in siteIds)
         {
             try
             {
-                await CatchUpSite(dbContext, assignedSite, today);
+                var siteDbContext = dbContextHelper.GetDbContext();
+
+                var assignedSite = await siteDbContext.AssignedSites
+                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                    .FirstOrDefaultAsync(x => x.SiteId == siteId);
+
+                if (assignedSite == null)
+                {
+                    // Removed or otherwise gone between the listing query above
+                    // and now -- nothing to catch up.
+                    continue;
+                }
+
+                await CatchUpSite(siteDbContext, assignedSite, today);
             }
             catch (Exception ex)
             {
                 Console.WriteLine(
-                    $"fail: FlexChainCatchUpJob failed for AssignedSite.SiteId: {assignedSite.SiteId}. {ex.Message}");
+                    $"fail: FlexChainCatchUpJob failed for AssignedSite.SiteId: {siteId}. {ex.Message}");
                 Console.WriteLine($"fail: {ex.StackTrace}");
                 SentrySdk.CaptureException(ex);
             }
