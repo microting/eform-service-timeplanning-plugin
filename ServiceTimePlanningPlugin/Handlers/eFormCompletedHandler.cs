@@ -141,6 +141,17 @@ public class EFormCompletedHandler : IHandleMessages<eFormCompleted>
 
                 var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
 
+                // A reconciled day is frozen. Checked before the row is loaded,
+                // since the save below would be refused anyway, and the device
+                // data would vanish into the catch at the bottom without a word.
+                var lockedThrough = await DayLockHelper.LockedThroughAsync(dbContext, (int)site.MicrotingUid!);
+                if (DayLockHelper.IsLocked(lockedThrough, midnight))
+                {
+                    Console.WriteLine(
+                        $"info: submission for {site.MicrotingUid}/{midnight:yyyy-MM-dd} rejected: day is reconciled/locked (reconciled through {lockedThrough:yyyy-MM-dd})");
+                    return;
+                }
+
                 var timePlanning = await dbContext.PlanRegistrations
                     .Where(x => x.SdkSitId == site.MicrotingUid
                                 && x.Date == midnight)

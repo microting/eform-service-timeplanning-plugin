@@ -24,8 +24,10 @@ SOFTWARE.
 
 namespace ServiceTimePlanningPlugin.Infrastructure.Helpers;
 
+using System;
+using Interceptors;
+using Microsoft.EntityFrameworkCore;
 using Microting.TimePlanningBase.Infrastructure.Data;
-using Microting.TimePlanningBase.Infrastructure.Data.Factories;
 
 public class DbContextHelper
 {
@@ -36,10 +38,27 @@ public class DbContextHelper
         ConnectionString = connectionString;
     }
 
+    /// <summary>
+    /// Every production context in this service is built here, so this is
+    /// where the reconciled-day lock is attached: no background job can write
+    /// a day the web refuses to.
+    /// </summary>
     public TimePlanningPnDbContext GetDbContext()
     {
-        TimePlanningPnContextFactory contextFactory = new TimePlanningPnContextFactory();
+        var optionsBuilder = new DbContextOptionsBuilder<TimePlanningPnDbContext>();
 
-        return contextFactory.CreateDbContext(new[] { ConnectionString });
+        // The same options TimePlanningPnContextFactory.CreateDbContext sets
+        // (this used to call it), which offers no way to add an interceptor.
+        // The server version stays hardcoded: ServerVersion.AutoDetect OPENS A
+        // CONNECTION and runs a version query, and the jobs call this once per
+        // site per run.
+        optionsBuilder.UseMySql(
+            ConnectionString,
+            new MariaDbServerVersion(new Version(10, 5, 0)),
+            mySqlOptionsAction: builder => { builder.EnableRetryOnFailure(); });
+
+        optionsBuilder.AddInterceptors(ReconciledDayLockInterceptor.Instance);
+
+        return new TimePlanningPnDbContext(optionsBuilder.Options);
     }
 }
