@@ -23,9 +23,12 @@ namespace ServiceTimePlanningPlugin.Scheduler.Jobs;
 /// This job walks each site forward from <see cref="AssignedSite.FlexChainComputedThrough"/>
 /// (or its earliest registration, when the cursor has never been set) through
 /// today, filling in the real chain via the shared <see cref="FlexChain"/>
-/// helper, then advances the cursor. Runs once per day (gated to a single
-/// UTC hour that <see cref="SearchListJob"/> does not use) via the same
-/// 60-minute service timer.
+/// helper, then advances the cursor. A walk never starts inside a reconciled
+/// (locked) range; it starts the day after the site's boundary instead, and
+/// the cursor still advances past the frozen range. Frozen means frozen: holes
+/// inside a range that is later unlocked are not revisited by this job. Runs
+/// once per day (gated to a single UTC hour that <see cref="SearchListJob"/>
+/// does not use) via the same 60-minute service timer.
 ///
 /// This job writes EVERY site EVERY night. Shipping the code and running it
 /// are deliberately two separate decisions: it is gated OFF by default via
@@ -154,6 +157,17 @@ public class FlexChainCatchUpJob(DbContextHelper dbContextHelper) : IJob
             // Already caught up through today (or beyond, which should not
             // happen but is harmless to no-op on).
             return;
+        }
+
+        // A reconciled day is frozen: start the walk the day after the site's
+        // boundary instead of inside it. The boundary row still seeds the chain
+        // (preTimePlanning below is read AsNoTracking), so the first open day
+        // continues from the reconciled balance, and the cursor can advance
+        // rather than stay pinned before the lock, failing every night.
+        var lockedThrough = await DayLockHelper.LockedThroughAsync(dbContext, assignedSite.SiteId);
+        if (DayLockHelper.IsLocked(lockedThrough, walkStart))
+        {
+            walkStart = lockedThrough.Value.Date.AddDays(1);
         }
 
         // The single row immediately before the walk start, to seed the chain
