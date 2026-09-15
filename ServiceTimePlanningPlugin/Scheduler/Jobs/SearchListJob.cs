@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -94,26 +95,53 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     var response = await request.ExecuteAsync();
                     var values = response.Values;
 
-                    var headerRows = values?.FirstOrDefault();
                     if (values is { Count: > 0 })
                     {
+                        // Columns are resolved to sites once per run, not per (date, column) cell.
+                        var layout = PlanTimerSheetColumns.Map(values[0]);
+                        var assignedSites = await dbContext.AssignedSites
+                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                            .ToListAsync();
+                        var assignedSiteIds = assignedSites.Select(x => x.SiteId).ToList();
+                        var sites = await sdkContext.Sites
+                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                            .Where(x => x.MicrotingUid != null && assignedSiteIds.Contains(x.MicrotingUid.Value))
+                            .Select(x => new { x.Name, SiteId = x.MicrotingUid!.Value })
+                            .ToListAsync();
+                        var resolution = PlanTimerSheetColumns.Resolve(layout.Workers,
+                            sites.Select(x => (x.Name, x.SiteId)), assignedSites);
+
+                        foreach (var message in resolution.Unmatched)
+                        {
+                            Console.WriteLine($"info: PlanTimer sheet {message}");
+                        }
+
+                        foreach (var problem in layout.Problems.Concat(resolution.Problems))
+                        {
+                            Console.WriteLine($"warn: PlanTimer sheet: {problem}");
+                            SentrySdk.CaptureMessage($"PlanTimer sheet: {problem}", SentryLevel.Warning);
+                        }
+
+                        // Built once per worker, never per cell -- see OneMinuteModeTimeline.
+                        var timelines = new Dictionary<int, OneMinuteModeTimeline>();
+                        foreach (var worker in resolution.Workers)
+                        {
+                            timelines[worker.SiteId] =
+                                await OneMinuteModeTimeline.BuildAsync(dbContext, worker.AssignedSite);
+                        }
+
                         // Skip the header row (first row)
                         for (var i = 1; i < values.Count; i++)
                         {
                             var row = values[i];
-                            // Process each row
-                            var date = row[0].ToString();
+                            var date = PlanTimerSheetColumns.CellAt(row, 0);
 
-                            // Process the dato as date
-
-                            // Parse date and validate
                             if (!DateTime.TryParseExact(date, "dd.MM.yyyy", CultureInfo.InvariantCulture,
-                                    DateTimeStyles.None, out var _))
+                                    DateTimeStyles.None, out var dateValue))
                             {
                                 continue;
                             }
 
-                            var dateValue = DateTime.ParseExact(date, "dd.MM.yyyy", CultureInfo.InvariantCulture);
                             if (dateValue < DateTime.Now.AddDays(-1))
                             {
                                 Console.WriteLine($"info: Skipping past date: {dateValue}");
@@ -126,66 +154,26 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 continue;
                             }
 
-                            // This is done since google api skips empty columns at the end of the row
-                            if (row.Count < headerRows.Count)
+                            foreach (var (columns, siteName, siteId, assignedSite) in resolution.Workers)
                             {
-                                var itemsToAdd = headerRows.Count - row.Count;
-                                for (int k = 0; k < itemsToAdd; k++)
-                                {
-                                    row.Add(string.Empty);
-                                }
-                            }
-
-                            // Iterate over each pair of columns starting from the fourth column
-                            for (int j = 3; j < row.Count; j += 2)
-                            {
-                                var siteName = headerRows[j].ToString().Replace("- timer", "")
-                                    .ToLower().Replace(" ", "").Trim();
-
                                 Console.WriteLine($"info: Processing site: {siteName} for date: {dateValue}");
-                                var site = await sdkContext.Sites
-                                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                    .FirstOrDefaultAsync(x =>
-                                        x.Name.Replace(" ", "").ToLower() == siteName);
-                                if (site == null)
+
+                                // null leaves the field untouched: the sheet has no such
+                                // column for this worker, or the hours cell is not a number.
+                                var planText = columns.TextColumn == null
+                                    ? null
+                                    : PlanTimerSheetColumns.CellAt(row, columns.TextColumn);
+                                double? parsedPlanHours = null;
+                                if (columns.HoursColumn != null)
                                 {
-                                    continue;
-                                }
-
-                                var assignedSite = await dbContext.AssignedSites
-                                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                    .FirstOrDefaultAsync(x => x.SiteId == site.MicrotingUid);
-
-                                if (assignedSite == null)
-                                {
-                                    continue;
-                                }
-
-                                if (!assignedSite.UseGoogleSheetAsDefault)
-                                {
-                                    continue;
-                                }
-
-                                var planHours = row.Count > j ? row[j].ToString() : string.Empty;
-                                var planText = row.Count > j + 1 ? row[j + 1].ToString() : string.Empty;
-
-                                if (string.IsNullOrEmpty(planHours))
-                                {
-                                    planHours = "0";
-                                }
-
-                                // Replace comma with dot if needed
-                                if (planHours.Contains(','))
-                                {
-                                    planHours = planHours.Replace(",", ".").Trim();
-                                }
-
-                                var parsedPlanHours = 0.0;
-
-                                if (!string.IsNullOrWhiteSpace(planHours))
-                                {
-                                    parsedPlanHours = double.Parse(planHours, NumberStyles.AllowDecimalPoint,
-                                        NumberFormatInfo.InvariantInfo);
+                                    var planHours = PlanTimerSheetColumns.CellAt(row, columns.HoursColumn);
+                                    parsedPlanHours = PlanTimerSheetColumns.ParseHours(planHours);
+                                    if (parsedPlanHours == null)
+                                    {
+                                        // One bad cell must not abort the import for every other worker.
+                                        Console.WriteLine(
+                                            $"warn: PlanTimer sheet hours \"{planHours.Trim()}\" for site: {siteName} and date: {dateValue} is not a number; hours not imported");
+                                    }
                                 }
 
                                 // var preTimePlanning = await dbContext.PlanRegistrations.AsNoTracking()
@@ -197,15 +185,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 var midnight = new DateTime(dateValue.Year, dateValue.Month, dateValue.Day, 0, 0, 0);
 
                                 var planRegistrations = await dbContext.PlanRegistrations.Where(x =>
-                                        x.Date == midnight && x.SdkSitId == site.MicrotingUid)
+                                        x.Date == midnight && x.SdkSitId == siteId)
                                     .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
                                     .ToListAsync();
                                 if (planRegistrations.Count > 1)
                                 {
                                     Console.WriteLine(
-                                        $"fail: Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                        $"fail: Found multiple plan registrations for site: {siteName} and date: {dateValue}. This should not happen.");
                                     SentrySdk.CaptureMessage(
-                                        $"fail: Found multiple plan registrations for site: {site.Name} and date: {dateValue}. This should not happen.");
+                                        $"fail: Found multiple plan registrations for site: {siteName} and date: {dateValue}. This should not happen.");
                                     foreach (var plan in planRegistrations)
                                     {
                                         Console.WriteLine(
@@ -224,9 +212,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                     planRegistration = new PlanRegistration
                                     {
                                         Date = midnight,
-                                        PlanText = planText,
-                                        PlanHours = parsedPlanHours,
-                                        SdkSitId = (int)site.MicrotingUid!,
+                                        PlanText = planText ?? string.Empty,
+                                        PlanHours = parsedPlanHours ?? 0,
+                                        SdkSitId = siteId,
                                         CreatedByUserId = 0,
                                         UpdatedByUserId = 0,
                                         NettoHours = 0,
@@ -261,46 +249,16 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 }
                                 else
                                 {
-                                    // print to console if the current PlanText is different from the one in the database
-                                    if (planRegistration.PlanText != planText)
-                                    {
-                                        Console.WriteLine(
-                                            $"warn: PlanText for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanText} to {planText}");
-                                    }
-
-                                    planRegistration.PlanText = planText;
-
-                                    if (string.IsNullOrEmpty(planRegistration.PlanText))
-                                    {
-                                        // print to console if the current PlanHours is different from the one in the database
-                                        if (planRegistration.PlanHours != parsedPlanHours)
-                                        {
-                                            Console.WriteLine(
-                                                $"warn: PlanHours for site: {site.Name} and date: {dateValue} has changed from {planRegistration.PlanHours} to {parsedPlanHours}");
-                                        }
-
-                                        if (!planRegistration.PlanChangedByAdmin)
-                                        {
-                                            planRegistration.PlanHours = parsedPlanHours;
-                                        }
-                                    }
+                                    PlanTimerSheetColumns.ApplyTo(planRegistration, planText, parsedPlanHours,
+                                        $"site: {siteName} and date: {dateValue}");
 
                                     planRegistration.UpdatedByUserId = 0;
 
                                     await planRegistration.Update(dbContext);
                                 }
 
-                                // Sheet import: (date row) x (site column) grid bounded by the
-                                // sheet's row count, refreshed a few times a day; assignedSite is
-                                // already re-fetched per (date, site) pair above (pre-existing,
-                                // unrelated to this change), so building the timeline per call here
-                                // matches that existing per-iteration cost rather than introducing a
-                                // new hot-loop N+1 -- unlike case 18 below, this is not a tight
-                                // per-row loop over one site's month of history.
-                                var sheetImportOneMinuteTimeline =
-                                    await OneMinuteModeTimeline.BuildAsync(dbContext, assignedSite);
                                 await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext,
-                                    assignedSite, DateTime.Now.AddMonths(-1), sheetImportOneMinuteTimeline);
+                                    assignedSite, DateTime.Now.AddMonths(-1), timelines[siteId]);
                             }
                         }
                     }
