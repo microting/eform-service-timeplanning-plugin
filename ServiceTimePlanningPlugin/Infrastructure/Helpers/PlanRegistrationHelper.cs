@@ -54,7 +54,10 @@ public static class PlanRegistrationHelper
                     {
                         if (planRegistration.Date > dayOfPayment && !planRegistration.PlanChangedByAdmin)
                         {
-                            var splitList = planRegistration.PlanText.Split(';');
+                            // Sheets typed with a Danish locale write "7,00-15,00/1"; the
+                            // time parts below only split on '.', ':' and '½'. Same
+                            // normalization as the plugin's PlanTextHelper.
+                            var splitList = planRegistration.PlanText.Replace(",", ".").Split(';');
                             var firsSplit = splitList[0];
 
                             var regex = new Regex(@"(.*)-(.*)\/(.*)");
