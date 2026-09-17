@@ -130,6 +130,20 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 await OneMinuteModeTimeline.BuildAsync(dbContext, worker.AssignedSite);
                         }
 
+                        // Every worker's reconciled boundary, resolved ONCE for the run
+                        // rather than per (date, site) cell. A reconciled day is frozen,
+                        // so the sheet must not overwrite it -- and one rejected save
+                        // would abort this whole run for every site, since the only catch
+                        // is the one around all of it.
+                        //
+                        // Keyed off resolution.Workers, the very list the row loop below
+                        // iterates, so a worker cannot reach that loop without an entry
+                        // here: DayLockHelper.IsLocked reads a site MISSING from the map
+                        // as having no boundary, i.e. silently open, so the map's key set
+                        // must not be derived independently of the loop's.
+                        var lockedThroughBySite = await DayLockHelper.LockedThroughForSitesAsync(
+                            dbContext, resolution.Workers.Select(x => x.SiteId).Distinct().ToList());
+
                         // Skip the header row (first row)
                         for (var i = 1; i < values.Count; i++)
                         {
@@ -157,6 +171,15 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             foreach (var (columns, siteName, siteId, assignedSite) in resolution.Workers)
                             {
                                 Console.WriteLine($"info: Processing site: {siteName} for date: {dateValue}");
+
+                                // Before the row is loaded: a tracked locked row would
+                                // be flushed by the next save on this shared context.
+                                if (DayLockHelper.IsLocked(lockedThroughBySite, siteId, dateValue))
+                                {
+                                    Console.WriteLine(
+                                        $"info: Skipping locked (reconciled) date: {dateValue} for site: {siteName}");
+                                    continue;
+                                }
 
                                 // null leaves the field untouched: the sheet has no such
                                 // column for this worker, or the hours cell is not a number.
@@ -276,89 +299,110 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
             }
                 break;
             case 18:
-            {
-                var dbContext = dbContextHelper.GetDbContext();
-                var siteIds = await dbContext.AssignedSites
-                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                    .Select(x => x.SiteId)
-                    .ToListAsync();
-
-                var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
-                var dayOfPayment = toDay.AddMonths(-1);
-
-                Parallel.ForEach(siteIds, siteId =>
-                {
-                    try
-                    {
-                        var innerDbContext = dbContextHelper.GetDbContext();
-
-                        // Hoisted out of the row loop below: assignedSite does not vary
-                        // per row, and the timeline built from it must be built ONCE per
-                        // site -- never per row (~1 month of daily registrations per site
-                        // here) -- otherwise every row issues its own AssignedSiteVersions
-                        // query. See OneMinuteModeTimeline.
-                        var assignedSite = innerDbContext.AssignedSites
-                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                            .FirstOrDefault(x => x.SiteId == siteId);
-                        var oneMinuteTimeline =
-                            OneMinuteModeTimeline.BuildAsync(innerDbContext, assignedSite).GetAwaiter().GetResult();
-
-                        var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
-                            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                            .Where(x => x.SdkSitId == siteId)
-                            .Where(x => x.Date > dayOfPayment)
-                            .OrderBy(x => x.Date)
-                            .Select(x => x.Id)
-                            .ToList();
-
-                        foreach (var planRegistrationId in planRegistrationIdsForSite)
-                        {
-                            var planRegistration = innerDbContext.PlanRegistrations
-                                .AsTracking()
-                                .First(x => x.Id == planRegistrationId);
-                            if (planRegistration.Date > DateTime.Now.AddMonths(6))
-                            {
-                                planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
-                                Console.WriteLine(
-                                    $@"info: Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
-                            }
-                            else
-                            {
-                                var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
-                                    .First(x => x.Id == planRegistration.Id);
-
-                                planRegistration = PlanRegistrationHelper
-                                    .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite,
-                                        dayOfPayment, oneMinuteTimeline)
-                                    .GetAwaiter().GetResult();
-
-                                if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
-                                    originalPlanRegistration.Flex != planRegistration.Flex)
-                                {
-                                    SentrySdk.CaptureMessage(
-                                        $"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
-                                        $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
-                                        $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}",
-                                        SentryLevel.Error);
-                                    Console.WriteLine(
-                                        $@"fail: PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
-                                        $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
-                                        $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
-                                    planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
-                                }
-                            }
-                        }
-
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"fail: {ex.Message}");
-                        Console.WriteLine($"fail: {ex.StackTrace}");
-                        SentrySdk.CaptureException(ex);
-                    }
-                });
+                await RecalculateRecentRegistrations();
                 break;
-            }
         }
+    }
+
+    /// <summary>
+    /// The nightly per-site recalculation of the last month's registrations,
+    /// which also soft-deletes rows dated more than 6 months ahead. Days at or
+    /// before a site's reconciled boundary are skipped.
+    ///
+    /// No hourly schedule gate here -- <see cref="Execute"/> is what the
+    /// service timer calls; this is the entry point integration tests call
+    /// directly (as FlexChainCatchUpJob.RunCatchUp is) so a test run does not
+    /// depend on the wall-clock hour.
+    /// </summary>
+    public async Task RecalculateRecentRegistrations()
+    {
+        var dbContext = dbContextHelper.GetDbContext();
+        var siteIds = await dbContext.AssignedSites
+            .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+            .Select(x => x.SiteId)
+            .ToListAsync();
+
+        var toDay = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, 0, 0, 0);
+        var dayOfPayment = toDay.AddMonths(-1);
+
+        Parallel.ForEach(siteIds, siteId =>
+        {
+            try
+            {
+                var innerDbContext = dbContextHelper.GetDbContext();
+
+                // Hoisted out of the row loop below: assignedSite does not vary
+                // per row, and the timeline built from it must be built ONCE per
+                // site -- never per row (~1 month of daily registrations per site
+                // here) -- otherwise every row issues its own AssignedSiteVersions
+                // query. See OneMinuteModeTimeline.
+                var assignedSite = innerDbContext.AssignedSites
+                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                    .FirstOrDefault(x => x.SiteId == siteId);
+                var oneMinuteTimeline =
+                    OneMinuteModeTimeline.BuildAsync(innerDbContext, assignedSite).GetAwaiter().GetResult();
+
+                // A reconciled day is frozen, so rows at or before this site's
+                // boundary are never selected: a locked row that is never loaded
+                // is never tracked, so no save below can flush a change into it
+                // and end the rest of the site's run.
+                var lockedThrough =
+                    DayLockHelper.LockedThroughAsync(innerDbContext, siteId).GetAwaiter().GetResult();
+
+                var planRegistrationIdsForSite = innerDbContext.PlanRegistrations
+                    .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                    .Where(x => x.SdkSitId == siteId)
+                    .Where(x => x.Date > dayOfPayment)
+                    .WhereOpen(lockedThrough)
+                    .OrderBy(x => x.Date)
+                    .Select(x => x.Id)
+                    .ToList();
+
+                foreach (var planRegistrationId in planRegistrationIdsForSite)
+                {
+                    var planRegistration = innerDbContext.PlanRegistrations
+                        .AsTracking()
+                        .First(x => x.Id == planRegistrationId);
+                    if (planRegistration.Date > DateTime.Now.AddMonths(6))
+                    {
+                        planRegistration.Delete(innerDbContext).GetAwaiter().GetResult();
+                        Console.WriteLine(
+                            $@"info: Deleting planRegistration.Id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date} since it is more than 6 months in the future");
+                    }
+                    else
+                    {
+                        var originalPlanRegistration = innerDbContext.PlanRegistrations.AsNoTracking()
+                            .First(x => x.Id == planRegistration.Id);
+
+                        planRegistration = PlanRegistrationHelper
+                            .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite,
+                                dayOfPayment, oneMinuteTimeline)
+                            .GetAwaiter().GetResult();
+
+                        if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
+                            originalPlanRegistration.Flex != planRegistration.Flex)
+                        {
+                            SentrySdk.CaptureMessage(
+                                $"PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
+                                $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}",
+                                SentryLevel.Error);
+                            Console.WriteLine(
+                                $@"fail: PlanRegistration has changed with id: {planRegistration.Id} for siteId: {siteId} at planRegistration.Date: {planRegistration.Date}, " +
+                                $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
+                                $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
+                            planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"fail: {ex.Message}");
+                Console.WriteLine($"fail: {ex.StackTrace}");
+                SentrySdk.CaptureException(ex);
+            }
+        });
     }
 }

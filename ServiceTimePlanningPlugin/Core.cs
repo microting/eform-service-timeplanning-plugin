@@ -143,6 +143,12 @@ public class Core : ISdkEventHandler
                 if (string.IsNullOrEmpty(connectionString))
                     throw new ArgumentException("serverConnectionString is not allowed to be null or empty");
 
+                // The one context NOT built by DbContextHelper, so it has no
+                // reconciled-day lock attached. Considered and left: it only
+                // runs migrations and reads PluginConfigurationValues below,
+                // and never writes a PlanRegistration. Anything that writes
+                // must use _dbContextHelper instead, or it can change a day
+                // the web refuses to.
                 TimePlanningPnContextFactory contextFactory = new TimePlanningPnContextFactory();
 
                 _dbContext = contextFactory.CreateDbContext(new[] { connectionString });

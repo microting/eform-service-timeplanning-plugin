@@ -400,6 +400,104 @@ public class FlexChainCatchUpJobTests : TestBaseSetup
     }
 
     // ------------------------------------------------------------------
+    // A reconciled boundary is frozen: the walk starts the day after it,
+    // seeds from the boundary's stored balance, and the cursor still
+    // advances instead of failing on the locked rows every night.
+    // ------------------------------------------------------------------
+    [Test]
+    public async Task ReconciledBoundary_WalkStartsAfterIt_AndCursorAdvances()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+        var boundaryDate = today.AddDays(-4);
+
+        // No cursor -- without the clamp the walk would start at the earliest
+        // registration, inside the locked range.
+        await SeedAssignedSite(siteId, useOneMinute: false, computedThrough: null);
+
+        // Locked holes: +1h flex a day that the chain WOULD write, so walking
+        // them is a real change that the interceptor rejects. Seeded before the
+        // boundary, since creating a row inside a locked range is itself refused.
+        await SeedFiveMinuteRow(siteId, today.AddDays(-6), planHours: 7, nettoHours: 8);
+        await SeedFiveMinuteRow(siteId, today.AddDays(-5), planHours: 7, nettoHours: 8);
+
+        // The boundary, holding a reconciled balance the chain from the rows
+        // above would NOT reproduce (it would give 3.0), so the assertions
+        // below tell "seeded from the boundary" apart from "recomputed through it".
+        await new PlanRegistration
+        {
+            SdkSitId = siteId,
+            Date = boundaryDate,
+            PlanHours = 7,
+            NettoHours = 8,
+            SumFlexStart = 20.0,
+            SumFlexEnd = 21.0,
+            Reconciled = true,
+            ReconciledAt = today.AddHours(-1),
+            PlanText = "",
+            CommentOffice = "",
+            CommentOfficeAll = "",
+            WorkflowState = Constants.WorkflowStates.Created,
+            CreatedByUserId = 1,
+            UpdatedByUserId = 1
+        }.Create(TimePlanningPnDbContext);
+
+        // Open holes after the boundary, +1h flex a day.
+        await SeedFiveMinuteRow(siteId, today.AddDays(-3), planHours: 7, nettoHours: 8);
+        await SeedFiveMinuteRow(siteId, today.AddDays(-2), planHours: 7, nettoHours: 8);
+        await SeedFiveMinuteRow(siteId, today.AddDays(-1), planHours: 7, nettoHours: 8);
+        await SeedFiveMinuteRow(siteId, today, planHours: 7, nettoHours: 8);
+
+        var lockedDates = new[] { today.AddDays(-6), today.AddDays(-5), boundaryDate };
+
+        async Task<PlanRegistration[]> ReloadLockedRows()
+        {
+            var reloaded = new PlanRegistration[lockedDates.Length];
+            for (var i = 0; i < lockedDates.Length; i++)
+            {
+                reloaded[i] = await ReloadRow(siteId, lockedDates[i]);
+            }
+            return reloaded;
+        }
+
+        var lockedBefore = await ReloadLockedRows();
+
+        await _job.RunCatchUp();
+
+        var lockedAfter = await ReloadLockedRows();
+
+        var dMinus3 = await ReloadRow(siteId, today.AddDays(-3));
+        var dMinus2 = await ReloadRow(siteId, today.AddDays(-2));
+        var dMinus1 = await ReloadRow(siteId, today.AddDays(-1));
+        var dToday = await ReloadRow(siteId, today);
+        var assignedSite = await ReloadAssignedSite(siteId);
+
+        Assert.Multiple(() =>
+        {
+            for (var i = 0; i < lockedDates.Length; i++)
+            {
+                Assert.That(lockedAfter[i].Version, Is.EqualTo(lockedBefore[i].Version),
+                    $"the locked row on {lockedDates[i]:yyyy-MM-dd} must not be re-saved");
+                Assert.That(lockedAfter[i].UpdatedAt, Is.EqualTo(lockedBefore[i].UpdatedAt));
+                Assert.That(lockedAfter[i].SumFlexStart, Is.EqualTo(lockedBefore[i].SumFlexStart));
+                Assert.That(lockedAfter[i].SumFlexEnd, Is.EqualTo(lockedBefore[i].SumFlexEnd));
+                Assert.That(lockedAfter[i].Flex, Is.EqualTo(lockedBefore[i].Flex));
+            }
+
+            // Seeded from the boundary's stored 21.0, then +1h a day.
+            Assert.That(dMinus3.SumFlexStart, Is.EqualTo(21.0).Within(1e-9),
+                "the first open day must continue from the reconciled balance");
+            Assert.That(dMinus3.SumFlexEnd, Is.EqualTo(22.0).Within(1e-9));
+            Assert.That(dMinus2.SumFlexEnd, Is.EqualTo(23.0).Within(1e-9));
+            Assert.That(dMinus1.SumFlexEnd, Is.EqualTo(24.0).Within(1e-9));
+            Assert.That(dToday.SumFlexEnd, Is.EqualTo(25.0).Within(1e-9));
+
+            Assert.That(assignedSite.FlexChainComputedThrough, Is.EqualTo(today),
+                "a reconciled site must not pin the cursor behind its boundary");
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Execute() is gated OFF by default: with no
     // TimePlanningBaseSettings:FlexChainCatchUpEnabled row at all, nothing
     // runs -- regardless of the wall-clock hour, since the enable check

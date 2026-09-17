@@ -41,10 +41,12 @@ namespace ServiceTimePlanningPlugin.Integration.Test;
 /// dropped and re-migrated fresh per test so state does not leak between
 /// tests.
 ///
-/// FlexChainCatchUpJob only touches TimePlanningPnDbContext (AssignedSites,
-/// PlanRegistrations) -- no SDK Sites table is involved -- so this fixture
-/// does not need the SDK/base contexts the plugin's equivalent fixture also
-/// carries.
+/// The fixtures built on this (FlexChainCatchUpJob, SearchListJob's nightly
+/// recalculation and the reconciled-day lock interceptor) only touch
+/// TimePlanningPnDbContext -- no SDK Sites table is involved -- so this
+/// fixture does not need the SDK/base contexts the plugin's equivalent
+/// fixture also carries. TimePlanningPnDbContext comes from the production
+/// DbContextHelper, so every test context has the reconciled-day lock attached.
 /// </summary>
 public abstract class TestBaseSetup
 {
