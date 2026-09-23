@@ -204,12 +204,13 @@ public class PlanRegistrationHelperPlanTextTests : TestBaseSetup
     }
 
     /// <summary>
-    /// A cell that stops describing a shift must clear the hours too. Leaving
-    /// them would make the row read "no shift, seven planned hours", and the
-    /// unchanged PlanHours would also stop the caller noticing the day moved.
+    /// An absence marker clears the shift columns but must NOT touch PlanHours:
+    /// the sheet's separate hours column is the authority for such a row, the
+    /// caller assigns it from there, and overwriting it would seed the flex
+    /// chain from a zero.
     /// </summary>
     [Test]
-    public async Task UpdatePlanRegistration_TextReplacedByAnAbsenceMarker_ClearsShiftAndHours()
+    public async Task UpdatePlanRegistration_TextReplacedByAnAbsenceMarker_ClearsShiftsButKeepsTheHoursColumn()
     {
         var (assignedSite, planRegistration, timeline) = await ArrangeAsync("7:00-15:00/1");
 
@@ -218,6 +219,7 @@ public class PlanRegistrationHelperPlanTextTests : TestBaseSetup
         Assert.That(planRegistration.PlanHours, Is.EqualTo(7.0), "precondition");
 
         planRegistration.PlanText = "Ferie";
+        planRegistration.PlanHours = 7.4;
         await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, TimePlanningPnDbContext,
             assignedSite, DateTime.Now.AddMonths(-1), timeline);
 
@@ -227,7 +229,8 @@ public class PlanRegistrationHelperPlanTextTests : TestBaseSetup
                 (planRegistration.PlannedStartOfShift1, planRegistration.PlannedEndOfShift1,
                     planRegistration.PlannedBreakOfShift1),
                 Is.EqualTo((0, 0, 0)));
-            Assert.That(planRegistration.PlanHours, Is.Zero);
+            Assert.That(planRegistration.PlanHours, Is.EqualTo(7.4),
+                "the hours column must survive text that is not a shift");
         });
     }
 
