@@ -257,7 +257,8 @@ public class PlanRegistrationHelperPlanTextTests : TestBaseSetup
             Assert.That(
                 (stored.PlannedStartOfShift3, stored.PlannedEndOfShift3, stored.PlannedBreakOfShift3),
                 Is.EqualTo((12 * 60, 14 * 60, 60)));
-            Assert.That(stored.PlanHours, Is.EqualTo(3.5));
+            // 2 x (120 - 30) + (120 - 60).
+            Assert.That(stored.PlanHours, Is.EqualTo(4.0));
         });
     }
 
