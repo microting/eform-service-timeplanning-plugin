@@ -54,10 +54,10 @@ public static class PlanRegistrationDeviceSubmission
         TimePlanningPnDbContext dbContext, AssignedSite? assignedSite, PlanRegistration timePlanning)
     {
         // ONE query, in-memory lookups: resolves the mode that was in force
-        // when each row was REGISTERED. Built ONCE here, before the cascade
-        // loop below, and reused for every row in it -- every mode fork in
-        // this helper reads the resulting per-row mode, never the site's
-        // CURRENT flag. See OneMinuteModeTimeline.
+        // when each row was REGISTERED. Used here only to resolve the
+        // SUBMITTED row's mode (and its predecessor's) for that row's own
+        // chain -- never the site's CURRENT flag. RunForwardAsync below builds
+        // its own timeline for the rows after it. See OneMinuteModeTimeline.
         var oneMinuteTimeline = await OneMinuteModeTimeline.BuildAsync(dbContext, assignedSite);
         var rowIsOneMinute = oneMinuteTimeline.WasOneMinuteForRow(timePlanning);
 
@@ -83,33 +83,18 @@ public static class PlanRegistrationDeviceSubmission
         }
 
         await timePlanning.Update(dbContext);
-        if (dbContext.PlanRegistrations.Any(x => x.Date >= timePlanning.Date && x.SdkSitId == timePlanning.SdkSitId && x.Id != timePlanning.Id && x.WorkflowState != Constants.WorkflowStates.Removed))
-        {
-            // Ascending, unbounded walk carrying its running seed IN
-            // MEMORY (the just-updated preceding row, not a re-query).
-            PlanRegistration previousRegistration = timePlanning;
-            var list = await dbContext.PlanRegistrations
-                .Where(x => x.Date > timePlanning.Date && x.SdkSitId == timePlanning.SdkSitId && x.Id != timePlanning.Id)
-                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                .OrderBy(x => x.Date).ToListAsync();
-            foreach (PlanRegistration planRegistration in list)
-            {
-                Console.WriteLine($"Updating planRegistration {planRegistration.Id} for date {planRegistration.Date}");
-                // Fork on the mode AT REGISTRATION, not the site's current
-                // flag -- see OneMinuteModeTimeline for why.
-                if (oneMinuteTimeline.WasOneMinuteForRow(planRegistration))
-                {
-                    FlexChain.ApplyNettoFlexChainSecondPrecision(
-                        planRegistration, previousRegistration,
-                        oneMinuteTimeline.WasOneMinuteFor(previousRegistration));
-                }
-                else
-                {
-                    FlexChain.ApplyNettoFlexChainDecimal(planRegistration, previousRegistration);
-                }
-                await planRegistration.Update(dbContext);
-                previousRegistration = planRegistration;
-            }
-        }
+
+        // R4: carry the balance from the submitted day to the worker's last
+        // row (future pre-created days included). The walk starts AT the
+        // submitted day: it re-chains that day from its stored hours, which
+        // were just computed above, so the day is normally left unchanged and
+        // not re-written. It never recomputes a day's hours (R2); the old
+        // loop here re-derived later one-minute rows' hours from their device
+        // stamps. It skips reconciled days (R5) and writes only rows whose
+        // balance actually changed.
+        var changed = await FlexChainRecompute.RunForwardAsync(
+            dbContext, assignedSite, timePlanning.SdkSitId, timePlanning.Date);
+        Console.WriteLine(
+            $"info: carried the flex balance forward over {changed} registration(s) for site {timePlanning.SdkSitId} from {timePlanning.Date:yyyy-MM-dd}");
     }
 }

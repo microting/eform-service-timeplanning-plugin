@@ -201,4 +201,160 @@ public class PlanRegistrationDeviceSubmissionTests : TestBaseSetup
             Assert.That(row.SumFlexEnd, Is.EqualTo(-5.5).Within(1e-9));
         });
     }
+
+    // ------------------------------------------------------------------
+    // R4: the walk after the submitted day
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The balance reaches the worker's LAST row, a pre-created future day
+    /// included. (The old unbounded walk already did this; this guards it
+    /// through the switch to RunForwardAsync.)
+    /// </summary>
+    [Test]
+    public async Task LaterRows_CarryTheBalance_ThroughAFuturePreCreatedRow()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+        await SeedAssignedSite(siteId, useOneMinute: false);
+        await SeedFiveMinuteAnchor(siteId, today.AddDays(-3), sumFlexEnd: 2.0);
+        await SeedRow(siteId, today.AddDays(-2), pr =>
+        {
+            pr.PlanHours = 7;
+            pr.Start1Id = 97;  // 08:00
+            pr.Stop1Id = 193;  // 16:00
+            pr.Pause1Id = 7;   // 30 min -> 7.5 h, flex +0.5
+        });
+        // Stale chain on both later rows: never carried forward.
+        await SeedRow(siteId, today.AddDays(-1), pr =>
+        {
+            pr.PlanHours = 7;
+            pr.NettoHours = 8;
+        });
+        await SeedRow(siteId, today.AddDays(10), pr =>
+        {
+            pr.PlanHours = 7;
+        });
+
+        await Submit(siteId, today.AddDays(-2));
+
+        var submitted = await Reload(siteId, today.AddDays(-2));
+        var dMinus1 = await Reload(siteId, today.AddDays(-1));
+        var future = await Reload(siteId, today.AddDays(10));
+        Assert.Multiple(() =>
+        {
+            Assert.That(submitted.SumFlexEnd, Is.EqualTo(2.5).Within(1e-9));
+            Assert.That(dMinus1.SumFlexStart, Is.EqualTo(submitted.SumFlexEnd).Within(1e-9));
+            Assert.That(dMinus1.Flex, Is.EqualTo(1.0).Within(1e-9));
+            Assert.That(dMinus1.SumFlexEnd, Is.EqualTo(3.5).Within(1e-9));
+            Assert.That(dMinus1.NettoHours, Is.EqualTo(8).Within(1e-9), "a later row's hours are never recomputed");
+            Assert.That(future.SumFlexStart, Is.EqualTo(dMinus1.SumFlexEnd).Within(1e-9));
+            Assert.That(future.SumFlexEnd, Is.EqualTo(-3.5).Within(1e-9));
+        });
+    }
+
+    /// <summary>
+    /// R2, the incident scenario: a later one-minute row whose device stamps
+    /// (08:00-17:00, 9 h) disagree with the hours an office user set (8 h,
+    /// stored). The old walk ran ApplyNettoFlexChainSecondPrecision on it and
+    /// re-derived 9 h from the stamps. The walk must keep the stored hours
+    /// and only move the balance.
+    /// </summary>
+    [Test]
+    public async Task LaterOneMinuteRow_KeepsItsStoredHours_WhenItsStampsDisagree()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+        await SeedAssignedSite(siteId, useOneMinute: true);
+        await SeedRow(siteId, today.AddDays(-3), pr =>
+        {
+            pr.RegisteredUnderOneMinuteIntervals = true;
+            pr.PlanHours = 8;
+            pr.PlanHoursInSeconds = 28800;
+            pr.NettoHours = 8;
+            pr.NettoHoursInSeconds = 28800;
+            pr.SumFlexStart = 1.0;
+            pr.SumFlexStartInSeconds = 3600;
+            pr.SumFlexEnd = 1.0;
+            pr.SumFlexEndInSeconds = 3600;
+        });
+        await SeedRow(siteId, today.AddDays(-2), pr =>
+        {
+            pr.RegisteredUnderOneMinuteIntervals = true;
+            pr.PlanHours = 7.5;
+            pr.PlanHoursInSeconds = 27000;
+            pr.Start1Id = 97;  // ids only: 08:00-16:00, 30 min break -> 27000 s
+            pr.Stop1Id = 193;
+            pr.Pause1Id = 7;
+        });
+        var laterDate = today.AddDays(-1);
+        await SeedRow(siteId, laterDate, pr =>
+        {
+            pr.RegisteredUnderOneMinuteIntervals = true;
+            pr.PlanHours = 8;
+            pr.PlanHoursInSeconds = 28800;
+            pr.Start1StartedAt = laterDate.AddHours(8);
+            pr.Stop1StoppedAt = laterDate.AddHours(17); // stamps say 9 h
+            pr.NettoHours = 8;                          // office says 8 h
+            pr.NettoHoursInSeconds = 28800;
+        });
+
+        await Submit(siteId, today.AddDays(-2));
+
+        var later = await Reload(siteId, laterDate);
+        Assert.Multiple(() =>
+        {
+            Assert.That(later.NettoHoursInSeconds, Is.EqualTo(28800), "stored hours must survive the walk");
+            Assert.That(later.NettoHours, Is.EqualTo(8).Within(1e-9));
+            Assert.That(later.SumFlexStartInSeconds, Is.EqualTo(3600));
+            Assert.That(later.FlexInSeconds, Is.EqualTo(0));
+            Assert.That(later.SumFlexEndInSeconds, Is.EqualTo(3600));
+        });
+    }
+
+    /// <summary>
+    /// A resubmission that leaves the day's closing balance unchanged must not
+    /// rewrite later rows: no Version bump and no version row. The old walk
+    /// called PnBase.Update on every later row, which always bumps Version.
+    /// </summary>
+    [Test]
+    public async Task LaterRowsWhoseBalanceIsUnchanged_AreNotRewritten()
+    {
+        var siteId = NextSiteId();
+        var today = DateTime.Today;
+        await SeedAssignedSite(siteId, useOneMinute: false);
+        await SeedFiveMinuteAnchor(siteId, today.AddDays(-3), sumFlexEnd: 1.0);
+        await SeedRow(siteId, today.AddDays(-2), pr =>
+        {
+            pr.PlanHours = 7.5;
+            pr.Start1Id = 97;
+            pr.Stop1Id = 193;
+            pr.Pause1Id = 7; // 7.5 h, flex 0
+            pr.NettoHours = 7.5;
+            pr.SumFlexStart = 1.0;
+            pr.SumFlexEnd = 1.0;
+        });
+        await SeedRow(siteId, today.AddDays(-1), pr =>
+        {
+            pr.PlanHours = 8;
+            pr.NettoHours = 8;
+            pr.SumFlexStart = 1.0;
+            pr.SumFlexEnd = 1.0;
+        });
+        var before = await Reload(siteId, today.AddDays(-1));
+        var versionRowsBefore = await TimePlanningPnDbContext.PlanRegistrationVersions
+            .CountAsync(x => x.PlanRegistrationId == before.Id);
+
+        await Submit(siteId, today.AddDays(-2));
+
+        var after = await Reload(siteId, today.AddDays(-1));
+        var versionRowsAfter = await TimePlanningPnDbContext.PlanRegistrationVersions
+            .CountAsync(x => x.PlanRegistrationId == before.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(after.Version, Is.EqualTo(before.Version));
+            Assert.That(versionRowsAfter, Is.EqualTo(versionRowsBefore));
+            Assert.That(after.SumFlexStart, Is.EqualTo(1.0).Within(1e-9));
+        });
+    }
 }
