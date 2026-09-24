@@ -358,6 +358,10 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     .Select(x => x.Id)
                     .ToList();
 
+                // The earliest day whose balance this run changed; the days
+                // after it are carried forward once, after the loop (R4).
+                DateTime? earliestChanged = null;
+
                 foreach (var planRegistrationId in planRegistrationIdsForSite)
                 {
                     var planRegistration = innerDbContext.PlanRegistrations
@@ -392,8 +396,17 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
                                 $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
                             planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
+                            // Ids are ordered by date (OrderBy above), so the first change is the earliest.
+                            earliestChanged ??= planRegistration.Date;
                         }
                     }
+                }
+
+                if (earliestChanged is { } fromDate)
+                {
+                    FlexChainRecompute
+                        .RunForwardAsync(innerDbContext, assignedSite, siteId, fromDate)
+                        .GetAwaiter().GetResult();
                 }
 
             }
