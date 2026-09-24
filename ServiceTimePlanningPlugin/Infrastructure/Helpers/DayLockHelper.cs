@@ -92,8 +92,10 @@ public static class DayLockHelper
 
     /// <summary>
     /// What counts as a boundary row, in one place: Reconciled and not
-    /// soft-deleted. Both public queries compose their own site predicate
-    /// over this so the two never drift apart.
+    /// soft-deleted. Used by <see cref="LockedThroughForSitesAsync"/> only;
+    /// the single-site <see cref="LockedThroughAsync"/> forwards to the base
+    /// package's DayLock, which keeps its own copy of this rule, so the two
+    /// must be kept in step by hand.
     /// </summary>
     private static IQueryable<PlanRegistration> BoundaryRows(TimePlanningPnDbContext db)
         => db.PlanRegistrations

@@ -404,6 +404,10 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                 if (earliestChanged is { } fromDate)
                 {
+                    // Every change above is saved; drop the tracked copies so the
+                    // walk reloads current rows -- a device submission or web edit
+                    // may have changed later days since the loop loaded them.
+                    innerDbContext.ChangeTracker.Clear();
                     FlexChainRecompute
                         .RunForwardAsync(innerDbContext, assignedSite, siteId, fromDate)
                         .GetAwaiter().GetResult();
