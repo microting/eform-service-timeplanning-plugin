@@ -254,12 +254,16 @@ public class Core : ISdkEventHandler
         {
             // The timer fires every 60 minutes regardless of how long the previous tick's
             // jobs took, so a slow SearchListJob run could otherwise still be writing when
-            // the next tick starts the nightly walk. Serialize ticks with a gate instead of
-            // skipping overlapping ticks, so jobs never run concurrently: a tick that arrives
-            // late simply waits its turn. If a tick is delayed past a job's own hour gate,
-            // that job is just skipped for this tick - the nightly walk's 7-day look-back
-            // covers a skipped night.
-            await _callbackGate.WaitAsync();
+            // the next tick starts the nightly walk. At most one tick runs at a time: a tick
+            // that finds the previous one still running is skipped, not queued, so a gated
+            // job never runs twice in the same hour. The nightly walk's 7-day look-back
+            // covers any night skipped this way (e.g. a long import still running at 03 UTC).
+            if (!await _callbackGate.WaitAsync(0))
+            {
+                Console.WriteLine("info: scheduled tick skipped. The previous tick is still running.");
+                return;
+            }
+
             try
             {
                 await RunJob(nameof(SearchListJob), job.Execute);
