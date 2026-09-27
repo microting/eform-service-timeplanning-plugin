@@ -39,6 +39,7 @@ public class Core : ISdkEventHandler
     private TimePlanningPnDbContext _dbContext;
     private Timer _scheduleTimer;
     private DbContextHelper _dbContextHelper;
+    private readonly SemaphoreSlim _callbackGate = new(1, 1);
 
     public void CoreEventException(object sender, EventArgs args)
     {
@@ -251,9 +252,24 @@ public class Core : ISdkEventHandler
 
         async void Callback(object x)
         {
-            await RunJob(nameof(SearchListJob), job.Execute);
-            await RunJob(nameof(FlexChainCatchUpJob), flexChainCatchUpJob.Execute);
-            await RunJob(nameof(FlexChainNightlyWalkJob), flexChainNightlyWalkJob.Execute);
+            // The timer fires every 60 minutes regardless of how long the previous tick's
+            // jobs took, so a slow SearchListJob run could otherwise still be writing when
+            // the next tick starts the nightly walk. Serialize ticks with a gate instead of
+            // skipping overlapping ticks, so jobs never run concurrently: a tick that arrives
+            // late simply waits its turn. If a tick is delayed past a job's own hour gate,
+            // that job is just skipped for this tick - the nightly walk's 7-day look-back
+            // covers a skipped night.
+            await _callbackGate.WaitAsync();
+            try
+            {
+                await RunJob(nameof(SearchListJob), job.Execute);
+                await RunJob(nameof(FlexChainCatchUpJob), flexChainCatchUpJob.Execute);
+                await RunJob(nameof(FlexChainNightlyWalkJob), flexChainNightlyWalkJob.Execute);
+            }
+            finally
+            {
+                _callbackGate.Release();
+            }
         }
 
         _scheduleTimer = new Timer(Callback, null, TimeSpan.Zero, TimeSpan.FromMinutes(60));
