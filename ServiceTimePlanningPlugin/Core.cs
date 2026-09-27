@@ -251,12 +251,26 @@ public class Core : ISdkEventHandler
 
         async void Callback(object x)
         {
-            await job.Execute();
-            await flexChainCatchUpJob.Execute();
-            await flexChainNightlyWalkJob.Execute();
+            await RunJob(nameof(SearchListJob), job.Execute);
+            await RunJob(nameof(FlexChainCatchUpJob), flexChainCatchUpJob.Execute);
+            await RunJob(nameof(FlexChainNightlyWalkJob), flexChainNightlyWalkJob.Execute);
         }
 
         _scheduleTimer = new Timer(Callback, null, TimeSpan.Zero, TimeSpan.FromMinutes(60));
+    }
+
+    private static async Task RunJob(string name, Func<Task> job)
+    {
+        try
+        {
+            await job();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"fail: {name} failed. {ex.Message}");
+            Console.WriteLine($"fail: {ex.StackTrace}");
+            SentrySdk.CaptureException(ex);
+        }
     }
 
     private async Task CheckRegistrationIntegrity()
