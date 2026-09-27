@@ -192,6 +192,7 @@ public class Core : ISdkEventHandler
                 );
                 _container.Register(Component.For<SearchListJob>());
                 _container.Register(Component.For<FlexChainCatchUpJob>());
+                _container.Register(Component.For<FlexChainNightlyWalkJob>());
 
                 _bus = _container.Resolve<IBus>();
 
@@ -246,11 +247,13 @@ public class Core : ISdkEventHandler
     {
         var job = _container.Resolve<SearchListJob>();
         var flexChainCatchUpJob = _container.Resolve<FlexChainCatchUpJob>();
+        var flexChainNightlyWalkJob = _container.Resolve<FlexChainNightlyWalkJob>();
 
         async void Callback(object x)
         {
             await job.Execute();
             await flexChainCatchUpJob.Execute();
+            await flexChainNightlyWalkJob.Execute();
         }
 
         _scheduleTimer = new Timer(Callback, null, TimeSpan.Zero, TimeSpan.FromMinutes(60));
