@@ -39,6 +39,7 @@ public class Core : ISdkEventHandler
     private TimePlanningPnDbContext _dbContext;
     private Timer _scheduleTimer;
     private DbContextHelper _dbContextHelper;
+    private readonly SemaphoreSlim _callbackGate = new(1, 1);
 
     public void CoreEventException(object sender, EventArgs args)
     {
@@ -192,6 +193,7 @@ public class Core : ISdkEventHandler
                 );
                 _container.Register(Component.For<SearchListJob>());
                 _container.Register(Component.For<FlexChainCatchUpJob>());
+                _container.Register(Component.For<FlexChainNightlyWalkJob>());
 
                 _bus = _container.Resolve<IBus>();
 
@@ -246,14 +248,49 @@ public class Core : ISdkEventHandler
     {
         var job = _container.Resolve<SearchListJob>();
         var flexChainCatchUpJob = _container.Resolve<FlexChainCatchUpJob>();
+        var flexChainNightlyWalkJob = _container.Resolve<FlexChainNightlyWalkJob>();
 
         async void Callback(object x)
         {
-            await job.Execute();
-            await flexChainCatchUpJob.Execute();
+            // The timer fires every 60 minutes regardless of how long the previous tick's
+            // jobs took, so a slow SearchListJob run could otherwise still be writing when
+            // the next tick starts the nightly walk. At most one tick runs at a time: a tick
+            // that finds the previous one still running is skipped, not queued, so a gated
+            // job never runs twice in the same hour. The nightly walk's 7-day look-back
+            // covers any night skipped this way (e.g. a long import still running at 03 UTC).
+            if (!await _callbackGate.WaitAsync(0))
+            {
+                Console.WriteLine("info: scheduled tick skipped. The previous tick is still running.");
+                return;
+            }
+
+            try
+            {
+                await RunJob(nameof(SearchListJob), job.Execute);
+                await RunJob(nameof(FlexChainCatchUpJob), flexChainCatchUpJob.Execute);
+                await RunJob(nameof(FlexChainNightlyWalkJob), flexChainNightlyWalkJob.Execute);
+            }
+            finally
+            {
+                _callbackGate.Release();
+            }
         }
 
         _scheduleTimer = new Timer(Callback, null, TimeSpan.Zero, TimeSpan.FromMinutes(60));
+    }
+
+    private static async Task RunJob(string name, Func<Task> job)
+    {
+        try
+        {
+            await job();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"fail: {name} failed. {ex.Message}");
+            Console.WriteLine($"fail: {ex.StackTrace}");
+            SentrySdk.CaptureException(ex);
+        }
     }
 
     private async Task CheckRegistrationIntegrity()
