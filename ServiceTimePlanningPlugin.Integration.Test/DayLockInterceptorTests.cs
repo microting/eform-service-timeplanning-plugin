@@ -90,7 +90,7 @@ public class DayLockInterceptorTests : TestBaseSetup
 
         earlier.PlanHours = 9;
 
-        Assert.ThrowsAsync<DayLockedException>(async () => await earlier.Update(db),
+        await Assert.ThrowsAsync<DayLockedException>(async () => await earlier.Update(db),
             "background jobs must be as locked out as the web is -- if this fails, the "
             + "two copies of the interceptor have diverged");
     }
@@ -104,7 +104,7 @@ public class DayLockInterceptorTests : TestBaseSetup
 
         boundary.PlanHours = 9;
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await boundary.Update(TimePlanningPnDbContext));
     }
 
@@ -118,7 +118,7 @@ public class DayLockInterceptorTests : TestBaseSetup
         var earlier = await SeedPlain(TimePlanningPnDbContext, 958, new DateTime(2026, 1, 13));
         await SeedReconciled(TimePlanningPnDbContext, 958, new DateTime(2026, 1, 16));
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await earlier.Delete(TimePlanningPnDbContext));
     }
 
@@ -129,7 +129,7 @@ public class DayLockInterceptorTests : TestBaseSetup
         // Added arm matters here as much as the Modified one.
         await SeedReconciled(TimePlanningPnDbContext, 951, new DateTime(2026, 1, 16));
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await SeedPlain(TimePlanningPnDbContext, 951, new DateTime(2026, 1, 14)));
     }
 
@@ -164,7 +164,7 @@ public class DayLockInterceptorTests : TestBaseSetup
         earlier.TransferredToPayroll = true;
         earlier.PlanHours = 9;
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await earlier.Update(TimePlanningPnDbContext));
     }
 
@@ -178,7 +178,7 @@ public class DayLockInterceptorTests : TestBaseSetup
 
         earlier.Date = new DateTime(2026, 1, 20);
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await earlier.Update(TimePlanningPnDbContext));
     }
 
@@ -192,7 +192,7 @@ public class DayLockInterceptorTests : TestBaseSetup
 
         earlier.SdkSitId = 956;
 
-        Assert.ThrowsAsync<DayLockedException>(async () =>
+        await Assert.ThrowsAsync<DayLockedException>(async () =>
             await earlier.Update(TimePlanningPnDbContext));
     }
 }
