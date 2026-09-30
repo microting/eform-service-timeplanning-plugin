@@ -254,7 +254,7 @@ public class FlexChainCatchUpJobTests : TestBaseSetup
         var siteId = NextSiteId();
         await SeedAssignedSite(siteId, useOneMinute: false, computedThrough: null);
 
-        Assert.DoesNotThrowAsync(async () => await _job.RunCatchUp());
+        await Assert.DoesNotThrowAsync(async () => await _job.RunCatchUp());
 
         var assignedSite = await ReloadAssignedSite(siteId);
         Assert.That(assignedSite.FlexChainComputedThrough, Is.Null);
