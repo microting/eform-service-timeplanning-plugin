@@ -23,7 +23,8 @@ public static class PlanRegistrationHelper
         TimePlanningPnDbContext dbContext,
         AssignedSite dbAssignedSite,
         DateTime dayOfPayment,
-        OneMinuteModeTimeline oneMinuteTimeline
+        OneMinuteModeTimeline oneMinuteTimeline,
+        WorkerPlanPattern planPattern = null
         )
     {
         var tainted = false;
@@ -47,6 +48,20 @@ public static class PlanRegistrationHelper
 
             try
             {
+                // A worker's PlanPattern, when it governs this date, comes
+                // before the sheet and the weekday template. A null site skips
+                // this and reaches the branches below exactly as before.
+                if (dbAssignedSite != null)
+                {
+                    planPattern ??= await WorkerPlanPattern.LoadAsync(dbContext, dbAssignedSite)
+                        .ConfigureAwait(false);
+                    if (await ApplyPlanPatternAsync(planRegistration, dbContext, dbAssignedSite, dayOfPayment,
+                            rowIsOneMinute, oneMinuteTimeline, planPattern).ConfigureAwait(false))
+                    {
+                        return planRegistration;
+                    }
+                }
+
                 if (dbAssignedSite.UseGoogleSheetAsDefault)
                 {
                     if (!string.IsNullOrEmpty(planRegistration.PlanText))
@@ -72,26 +87,8 @@ public static class PlanRegistrationHelper
                             if (originalPlanHours != planRegistration.PlanHours || tainted)
                             {
                                 tainted = true;
-                                var preTimePlanning =
-                                    await dbContext.PlanRegistrations.AsNoTracking()
-                                        .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
-                                        .Where(x => x.Date < planRegistration.Date
-                                                    && x.SdkSitId == dbAssignedSite.SiteId)
-                                        .OrderByDescending(x => x.Date)
-                                        .FirstOrDefaultAsync();
-
-                                // Fork on the mode AT REGISTRATION, not the site's current
-                                // flag — see OneMinuteModeTimeline for why.
-                                if (rowIsOneMinute)
-                                {
-                                    FlexChain.ApplyNettoFlexChainSecondPrecision(
-                                        planRegistration, preTimePlanning,
-                                        oneMinuteTimeline.WasOneMinuteFor(preTimePlanning));
-                                }
-                                else
-                                {
-                                    FlexChain.ApplyNettoFlexChainDecimal(planRegistration, preTimePlanning);
-                                }
+                                await ApplyFlexChainAsync(planRegistration, dbContext, dbAssignedSite,
+                                    rowIsOneMinute, oneMinuteTimeline);
                             }
 
                             await planRegistration.Update(dbContext).ConfigureAwait(false);
@@ -388,6 +385,110 @@ public static class PlanRegistrationHelper
             }
         // }
         return planRegistration;
+    }
+
+    /// <summary>
+    /// The pattern branch. Returns false when the pattern does not govern the
+    /// row's date (no active pattern, or the date is before ValidFrom), so the
+    /// caller falls through to the sheet/template branches. Returns true when
+    /// it does, whether or not the row was then skipped: an accepted handover
+    /// day, or the rule the other branches use (on or before the day of
+    /// payment, or changed by an admin).
+    /// </summary>
+    private static async Task<bool> ApplyPlanPatternAsync(
+        PlanRegistration planRegistration,
+        TimePlanningPnDbContext dbContext,
+        AssignedSite dbAssignedSite,
+        DateTime dayOfPayment,
+        bool rowIsOneMinute,
+        OneMinuteModeTimeline oneMinuteTimeline,
+        WorkerPlanPattern planPattern)
+    {
+        if (!planPattern.IsActive)
+        {
+            return false;
+        }
+
+        // Cannot throw: the resolver only rejects RotationWeeks and AnchorDate,
+        // which WorkerPlanPattern.LoadAsync has already validated.
+        var patternPlanText = planPattern.PlanTextFor(planRegistration.Date);
+        if (patternPlanText == null)
+        {
+            return false;
+        }
+
+        // An accepted content handover (the only writer of
+        // ContentHandoverRequestId) owns the day: the pattern leaves it as it
+        // is, and returning true keeps the template off it too. Matches the
+        // plugin's PlanPatternPlanner.IsAcceptedHandoverDay.
+        if (planRegistration.ContentHandoverRequestId != null)
+        {
+            return true;
+        }
+
+        if (planRegistration.Date > dayOfPayment && !planRegistration.PlanChangedByAdmin)
+        {
+            var originalPlanHours = planRegistration.PlanHours;
+
+            planRegistration.PlanText = patternPlanText;
+            PlanRegistrationPlanText.ParseInto(planRegistration);
+            // ParseInto leaves PlanHours alone when the text has no shift,
+            // because a sheet carries the hours in a separate column. A
+            // pattern has no such column: text with no shift ("" included)
+            // means no planned hours.
+            if (!HasAnyPlannedShift(planRegistration))
+            {
+                planRegistration.PlanHours = 0;
+                if (LooksLikeAShift(planRegistration))
+                {
+                    SentrySdk.CaptureMessage(
+                        $"Could not parse pattern PlanText for planning with id: {planRegistration.Id} the PlanText was: {planRegistration.PlanText}");
+                }
+            }
+
+            if (originalPlanHours != planRegistration.PlanHours)
+            {
+                await ApplyFlexChainAsync(planRegistration, dbContext, dbAssignedSite,
+                    rowIsOneMinute, oneMinuteTimeline);
+            }
+
+            await planRegistration.Update(dbContext).ConfigureAwait(false);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Re-derives the row's flex from the previous live row. Moved unchanged
+    /// out of the sheet branch so the pattern branch runs the same code.
+    /// </summary>
+    private static async Task ApplyFlexChainAsync(
+        PlanRegistration planRegistration,
+        TimePlanningPnDbContext dbContext,
+        AssignedSite dbAssignedSite,
+        bool rowIsOneMinute,
+        OneMinuteModeTimeline oneMinuteTimeline)
+    {
+        var preTimePlanning =
+            await dbContext.PlanRegistrations.AsNoTracking()
+                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                .Where(x => x.Date < planRegistration.Date
+                            && x.SdkSitId == dbAssignedSite.SiteId)
+                .OrderByDescending(x => x.Date)
+                .FirstOrDefaultAsync();
+
+        // Fork on the mode AT REGISTRATION, not the site's current
+        // flag — see OneMinuteModeTimeline for why.
+        if (rowIsOneMinute)
+        {
+            FlexChain.ApplyNettoFlexChainSecondPrecision(
+                planRegistration, preTimePlanning,
+                oneMinuteTimeline.WasOneMinuteFor(preTimePlanning));
+        }
+        else
+        {
+            FlexChain.ApplyNettoFlexChainDecimal(planRegistration, preTimePlanning);
+        }
     }
 
     /// <summary>

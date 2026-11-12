@@ -8,6 +8,7 @@ using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
 using Microsoft.EntityFrameworkCore;
 using Microting.eForm.Infrastructure.Constants;
+using Microting.TimePlanningBase.Infrastructure.Data;
 using Microting.TimePlanningBase.Infrastructure.Data.Entities;
 using Microting.TimePlanningBase.Infrastructure.Helpers;
 using Sentry;
@@ -17,6 +18,9 @@ namespace ServiceTimePlanningPlugin.Scheduler.Jobs;
 
 public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCore) : IJob
 {
+    /// <summary>How far ahead the nightly run keeps rows for patterned workers.</summary>
+    public const int PlanPatternHorizonDays = 180;
+
     public async Task Execute()
     {
         switch (DateTime.UtcNow.Hour)
@@ -33,6 +37,12 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 try
                 {
                     var dbContext = dbContextHelper.GetDbContext();
+                    if (await IsGoogleSheetRetired(dbContext))
+                    {
+                        Console.WriteLine("info: Google Sheet pull skipped: TimePlanningBaseSettings:GoogleSheetRetired is true");
+                        return;
+                    }
+
                     var sdkContext = sdkCore.DbContextHelper.GetDbContext();
                     var privateKeyId = Environment.GetEnvironmentVariable("PRIVATE_KEY_ID");
                     if (string.IsNullOrEmpty(privateKeyId))
@@ -122,6 +132,16 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                             SentrySdk.CaptureMessage($"PlanTimer sheet: {problem}", SentryLevel.Warning);
                         }
 
+                        // Workers governed by a PlanPattern are never written from the
+                        // sheet; resolved once per pull, not per cell.
+                        var skippedSiteIds = await SheetImportSkippedSiteIdsAsync(dbContext,
+                            resolution.Workers.Select(x => x.AssignedSite));
+                        foreach (var skipped in resolution.Workers.Where(x => skippedSiteIds.Contains(x.SiteId)))
+                        {
+                            Console.WriteLine(
+                                $"info: PlanTimer sheet skips site: {skipped.SiteName}; it is planned by a PlanPattern");
+                        }
+
                         // Built once per worker, never per cell -- see OneMinuteModeTimeline.
                         var timelines = new Dictionary<int, OneMinuteModeTimeline>();
                         foreach (var worker in resolution.Workers)
@@ -170,6 +190,11 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                             foreach (var (columns, siteName, siteId, assignedSite) in resolution.Workers)
                             {
+                                if (skippedSiteIds.Contains(siteId))
+                                {
+                                    continue;
+                                }
+
                                 Console.WriteLine($"info: Processing site: {siteName} for date: {dateValue}");
 
                                 // Before the row is loaded: a tracked locked row would
@@ -281,7 +306,9 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 }
 
                                 await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext,
-                                    assignedSite, DateTime.Now.AddMonths(-1), timelines[siteId]);
+                                    assignedSite, DateTime.Now.AddMonths(-1), timelines[siteId],
+                                    // Any worker with an active pattern was skipped above.
+                                    WorkerPlanPattern.None);
                             }
                         }
                     }
@@ -358,9 +385,18 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                     .Select(x => x.Id)
                     .ToList();
 
+                // Loaded once per site. Workers without an active, valid
+                // pattern get WorkerPlanPattern.None: no rows are created and
+                // UpdatePlanRegistration takes its existing branches.
+                var planPattern =
+                    WorkerPlanPattern.LoadAsync(innerDbContext, assignedSite).GetAwaiter().GetResult();
+
                 // The earliest day whose balance this run changed; the days
                 // after it are carried forward once, after the loop (R4).
-                DateTime? earliestChanged = null;
+                // Rows created for the pattern horizon count as changed.
+                DateTime? earliestChanged = ExtendPlanPatternHorizonAsync(innerDbContext, assignedSite,
+                        planPattern, oneMinuteTimeline, lockedThrough, toDay, dayOfPayment)
+                    .GetAwaiter().GetResult();
 
                 foreach (var planRegistrationId in planRegistrationIdsForSite)
                 {
@@ -380,7 +416,7 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
 
                         planRegistration = PlanRegistrationHelper
                             .UpdatePlanRegistration(planRegistration, innerDbContext, assignedSite,
-                                dayOfPayment, oneMinuteTimeline)
+                                dayOfPayment, oneMinuteTimeline, planPattern)
                             .GetAwaiter().GetResult();
 
                         if (originalPlanRegistration.SumFlexEnd != planRegistration.SumFlexEnd ||
@@ -396,8 +432,12 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                                 $"SumFlexStart changed from {originalPlanRegistration.SumFlexStart} to {planRegistration.SumFlexStart}" +
                                 $"and SumFlexEnd changed from {originalPlanRegistration.SumFlexEnd} to {planRegistration.SumFlexEnd}");
                             planRegistration.Update(innerDbContext).GetAwaiter().GetResult();
-                            // Ids are ordered by date (OrderBy above), so the first change is the earliest.
-                            earliestChanged ??= planRegistration.Date;
+                            // Ids are ordered by date (OrderBy above), so the first change is the
+                            // earliest of the loop; a horizon row created above may still be later.
+                            if (earliestChanged == null || planRegistration.Date < earliestChanged)
+                            {
+                                earliestChanged = planRegistration.Date;
+                            }
                         }
                     }
                 }
@@ -421,5 +461,146 @@ public class SearchListJob(DbContextHelper dbContextHelper, eFormCore.Core sdkCo
                 SentrySdk.CaptureException(ex);
             }
         });
+    }
+
+    /// <summary>
+    /// The SDK site ids the sheet pull must not write, by the same rule as the
+    /// plugin's importer: the worker has an ACTIVE PlanPattern, or has any
+    /// PlanPattern row (removed included) and UseGoogleSheetAsDefault is false.
+    /// Saving a pattern turns the flag off, deleting it hands the worker to the
+    /// weekday template rather than back to the sheet, and an admin who turns
+    /// the flag on again gets them imported again. With no PlanPattern rows at
+    /// all, nobody is skipped. One query per pull.
+    /// </summary>
+    public static async Task<HashSet<int>> SheetImportSkippedSiteIdsAsync(TimePlanningPnDbContext dbContext,
+        IEnumerable<AssignedSite> assignedSites)
+    {
+        var patterns = await dbContext.PlanPatterns
+            .AsNoTracking()
+            .Select(x => new { x.AssignedSiteId, Active = x.WorkflowState != Constants.WorkflowStates.Removed })
+            .ToListAsync();
+        var withAnyPattern = patterns.Select(x => x.AssignedSiteId).ToHashSet();
+        var withActivePattern = patterns.Where(x => x.Active).Select(x => x.AssignedSiteId).ToHashSet();
+
+        return assignedSites
+            .Where(x => withActivePattern.Contains(x.Id)
+                        || (withAnyPattern.Contains(x.Id) && !x.UseGoogleSheetAsDefault))
+            .Select(x => x.SiteId)
+            .ToHashSet();
+    }
+
+    /// <summary>
+    /// The TimePlanningBaseSettings:GoogleSheetRetired setting, parsed as the
+    /// plugin's GoogleSheetRetirement does: "1" or "true" in any case, trimmed,
+    /// is retired; a missing row or anything else is not, so the sheet pull
+    /// keeps running unless it is explicitly retired.
+    /// </summary>
+    public static async Task<bool> IsGoogleSheetRetired(TimePlanningPnDbContext dbContext)
+    {
+        var value = await dbContext.PluginConfigurationValues.AsNoTracking()
+            .Where(x => x.Name == "TimePlanningBaseSettings:GoogleSheetRetired")
+            .Select(x => x.Value)
+            .FirstOrDefaultAsync();
+
+        var trimmed = value?.Trim();
+        return trimmed == "1" || (bool.TryParse(trimmed, out var retired) && retired);
+    }
+
+    /// <summary>
+    /// Creates the missing rows of a patterned worker from max(ValidFrom,
+    /// today) through today + 180 days and runs each through
+    /// UpdatePlanRegistration, so the pattern fills them. 180 days stays inside
+    /// the nightly delete window (rows more than 6 months ahead are removed).
+    /// Reconciled days are skipped, and a resigned worker's rows stop at
+    /// ResignedAtDate. Returns the earliest date created, or null.
+    /// </summary>
+    public static async Task<DateTime?> ExtendPlanPatternHorizonAsync(
+        TimePlanningPnDbContext dbContext,
+        AssignedSite assignedSite,
+        WorkerPlanPattern planPattern,
+        OneMinuteModeTimeline oneMinuteTimeline,
+        DateTime? lockedThrough,
+        DateTime toDay,
+        DateTime dayOfPayment)
+    {
+        if (!planPattern.IsActive)
+        {
+            return null;
+        }
+
+        var siteId = assignedSite.SiteId;
+        var validFrom = planPattern.Pattern.ValidFrom.Date;
+        var from = validFrom > toDay ? validFrom : toDay;
+        var to = toDay.AddDays(PlanPatternHorizonDays);
+
+        // A resigned worker gets no plan after the day they leave; one with no
+        // date gets none at all. Same rule as the plugin's
+        // PlanPatternApplyService.WriteRowsAsync.
+        if (assignedSite.Resigned)
+        {
+            var lastDay = assignedSite.ResignedAtDate?.Date;
+            if (lastDay == null || lastDay < from)
+            {
+                return null;
+            }
+
+            if (lastDay < to)
+            {
+                to = lastDay.Value;
+            }
+        }
+
+        // The sheet import's duplicate guard (same Date, SdkSitId, not
+        // removed), read in one query for the whole range.
+        var existing = (await dbContext.PlanRegistrations
+                .Where(x => x.SdkSitId == siteId)
+                .Where(x => x.WorkflowState != Constants.WorkflowStates.Removed)
+                .Where(x => x.Date >= from && x.Date <= to)
+                .Select(x => x.Date)
+                .ToListAsync())
+            .ToHashSet();
+
+        DateTime? earliestCreated = null;
+        for (var midnight = from; midnight <= to; midnight = midnight.AddDays(1))
+        {
+            if (existing.Contains(midnight) || DayLockHelper.IsLocked(lockedThrough, midnight))
+            {
+                continue;
+            }
+
+            // Same field setup as the sheet import's new-row block.
+            var planRegistration = new PlanRegistration
+            {
+                Date = midnight,
+                PlanText = string.Empty,
+                PlanHours = 0,
+                SdkSitId = siteId,
+                CreatedByUserId = 0,
+                UpdatedByUserId = 0,
+                NettoHours = 0,
+                PaiedOutFlex = 0,
+                Pause1Id = 0,
+                Pause2Id = 0,
+                Start1Id = 0,
+                Start2Id = 0,
+                Stop1Id = 0,
+                Stop2Id = 0,
+                Flex = 0,
+                StatusCaseId = 0
+            };
+            await planRegistration.Create(dbContext);
+            await PlanRegistrationHelper.UpdatePlanRegistration(planRegistration, dbContext, assignedSite,
+                dayOfPayment, oneMinuteTimeline, planPattern);
+
+            earliestCreated ??= midnight;
+        }
+
+        if (earliestCreated != null)
+        {
+            Console.WriteLine(
+                $"info: Created PlanRegistrations from PlanPattern {planPattern.Pattern.Id} for siteId: {siteId} from {earliestCreated:yyyy-MM-dd} to {to:yyyy-MM-dd}");
+        }
+
+        return earliestCreated;
     }
 }
